@@ -33,7 +33,7 @@ class MyApp extends StatelessWidget {
         useMaterial3: true, // optional modern design
       ),
 
-      home: const LandingPage(),
+      home: const WLandingPage(),
     );
   }
 }
