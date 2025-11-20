@@ -4,7 +4,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'LoginPage.dart';
+import 'package:evacutaion/WebPages/LoginPage.dart';
+
 
 class SignUpPage extends StatefulWidget {
   const SignUpPage({super.key});
