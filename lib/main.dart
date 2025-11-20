@@ -1,6 +1,7 @@
 import 'package:evacutaion/App/LandingPage.dart';
 import 'package:evacutaion/App/MainDashbaord.dart';
 import 'package:evacutaion/ResidentPAges/ResidentDashboard.dart';
+import 'package:evacutaion/WebPages/LoginPage.dart';
 import 'package:evacutaion/WebPages/WLandingPage.dart';
 import 'package:evacutaion/WebPages/WebMainDashboard.dart';
 import 'package:flutter/material.dart';
@@ -33,7 +34,7 @@ class MyApp extends StatelessWidget {
         useMaterial3: true, // optional modern design
       ),
 
-      home: const WLandingPage(),
+      home: const LoginPage(),
     );
   }
 }
