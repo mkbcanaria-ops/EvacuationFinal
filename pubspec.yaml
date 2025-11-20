@@ -1,0 +1,47 @@
+name: evacutaion
+description: "A new Flutter project."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  supabase_flutter: ^2.10.3
+  qr: ^3.0.2
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^7.1.2
+  fl_chart: ^1.1.0
+  google_fonts: ^6.3.2
+  intl: ^0.20.2
+  printing: ^5.14.2
+  pdf: ^3.11.3
+  image_picker: ^1.2.0
+  excel: ^4.0.6
+  universal_html: ^2.2.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.4   # <-- Added here
+
+flutter_icons:                      # <-- Also added this section
+  android: true
+  ios: true
+  image_path: "assets/icon/app_icon.png"
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/Logo2.jpg
+    - assets/images/Mainpic1.jpg
+    - assets/images/Mainpic2.jpg
+    - assets/images/Mainpic3.jpg
+    - assets/images/Mainpic4.jpg       # <-- ADD THIS
+    - assets/images/LandingPage1.jpg   # <-- ADD THIS
