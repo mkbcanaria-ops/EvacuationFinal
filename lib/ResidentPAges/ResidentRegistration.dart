@@ -400,46 +400,56 @@ class _ResidentRegistrationPageWidgetState
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+
     return Stack(
       children: [
         SingleChildScrollView(
           scrollDirection: Axis.vertical,
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            child: Transform.scale(
-              scale: _currentScale,
-              child: Container(
-                width: 1560,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 18,
-                ),
-                color: Colors.white,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildTitleSection(),
-                    const SizedBox(height: 24),
-                    _buildDisasterDateSection(),
-                    const SizedBox(height: 60),
-                    _buildLocationCivilRow(),
-                    const SizedBox(height: 60),
-                    _buildHeadOfFamilyRow(),
-                    const SizedBox(height: 60),
-                    _buildAdditionalInfoRow(),
-                    const SizedBox(height: 50),
-                    _buildBeneficiaryEthnicityRow(),
-                    const SizedBox(height: 60),
-                    _buildFamilyMembersTable(),
-                    const SizedBox(height: 10),
-                    _buildInformationBox(),
-                    const SizedBox(height: 40),
-                    _buildHeadOfFamilyImageSection(),
-                    const SizedBox(height: 40),
-                    _buildDateRegisteredSection(),
-                    const SizedBox(height: 40),
-                    _buildSubmitButton(),
-                  ],
+            child: Center(
+              child: Transform.scale(
+                scale: _currentScale,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: 1560, // original width max
+                    minWidth: screenWidth * 0.9, // shrink on smaller screens
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 18,
+                    ),
+                    color: Colors.white,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        _buildTitleSection(),
+                        const SizedBox(height: 24),
+                        _buildDisasterDateSection(),
+                        const SizedBox(height: 60),
+                        _buildLocationCivilRow(),
+                        const SizedBox(height: 60),
+                        _buildHeadOfFamilyRow(),
+                        const SizedBox(height: 60),
+                        _buildAdditionalInfoRow(),
+                        const SizedBox(height: 50),
+                        _buildBeneficiaryEthnicityRow(),
+                        const SizedBox(height: 60),
+                        _buildFamilyMembersTable(),
+                        const SizedBox(height: 10),
+                        _buildInformationBox(),
+                        const SizedBox(height: 40),
+                        _buildHeadOfFamilyImageSection(),
+                        const SizedBox(height: 40),
+                        _buildDateRegisteredSection(),
+                        const SizedBox(height: 40),
+                        _buildSubmitButton(),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),

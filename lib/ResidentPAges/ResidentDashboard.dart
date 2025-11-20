@@ -38,8 +38,30 @@ class _ResidentDashboardPageState extends State<ResidentDashboardPage> {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
 
     const greenIconColor = Color(0xFF0D743D);
+
+    // Adaptive paddings
+    final horizontalPadding = screenWidth * 0.05; // 5% of width
+    final verticalPadding = screenHeight * 0.03; // 3% of height
+
+    // Adaptive font sizes
+    double titleFont = screenWidth > 1000
+        ? 26
+        : screenWidth > 600
+        ? 22
+        : 18;
+    double subtitleFont = screenWidth > 1000
+        ? 24
+        : screenWidth > 600
+        ? 20
+        : 16;
+    double bodyFont = screenWidth > 1000
+        ? 16
+        : screenWidth > 600
+        ? 14
+        : 12;
 
     return Scaffold(
       body: Stack(
@@ -51,12 +73,15 @@ class _ResidentDashboardPageState extends State<ResidentDashboardPage> {
 
           // Semi-transparent container
           Positioned(
-            top: 30,
-            left: 40,
-            right: 40,
-            bottom: 20,
+            top: verticalPadding,
+            left: horizontalPadding,
+            right: horizontalPadding,
+            bottom: verticalPadding,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 25),
+              padding: EdgeInsets.symmetric(
+                horizontal: horizontalPadding,
+                vertical: verticalPadding,
+              ),
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.85),
                 borderRadius: BorderRadius.circular(24),
@@ -80,14 +105,14 @@ class _ResidentDashboardPageState extends State<ResidentDashboardPage> {
                         children: [
                           Image.asset(
                             'assets/images/Logo2.jpg',
-                            width: 70,
-                            height: 70,
+                            width: screenWidth > 600 ? 70 : 50,
+                            height: screenWidth > 600 ? 70 : 50,
                           ),
-                          const SizedBox(width: 12),
-                          const Text(
+                          SizedBox(width: screenWidth * 0.02),
+                          Text(
                             "MSWDO",
                             style: TextStyle(
-                              fontSize: 26,
+                              fontSize: titleFont,
                               fontWeight: FontWeight.bold,
                               color: Colors.black87,
                             ),
@@ -95,13 +120,13 @@ class _ResidentDashboardPageState extends State<ResidentDashboardPage> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 40),
+                    SizedBox(height: screenHeight * 0.03),
 
                     // Welcome
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 8,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: screenWidth * 0.02,
+                        vertical: screenHeight * 0.01,
                       ),
                       decoration: BoxDecoration(
                         color: Colors.grey.withOpacity(0.15),
@@ -110,102 +135,114 @@ class _ResidentDashboardPageState extends State<ResidentDashboardPage> {
                       ),
                       child: Text(
                         "👋 Welcome ${userName ?? ''} to Santa Evacuation Portal",
-                        style: const TextStyle(
-                          fontSize: 16,
+                        style: TextStyle(
+                          fontSize: bodyFont,
                           color: Colors.black87,
                         ),
+                        textAlign: TextAlign.center,
                       ),
                     ),
-                    const SizedBox(height: 25),
+                    SizedBox(height: screenHeight * 0.02),
 
-                    const Text(
+                    Text(
                       "Manage Evacuation Services Easily",
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        fontSize: 24,
+                        fontSize: subtitleFont,
                         fontWeight: FontWeight.bold,
                         color: Colors.black87,
                         height: 1.3,
                       ),
                     ),
-                    const SizedBox(height: 15),
-                    const Text(
+                    SizedBox(height: screenHeight * 0.01),
+                    Text(
                       "Fill your applications, request or view your QR code, "
                       "and stay updated with notifications.",
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        fontSize: 14,
+                        fontSize: bodyFont,
                         color: Colors.black87,
                         height: 1.4,
                       ),
                     ),
-                    const SizedBox(height: 50),
+                    SizedBox(height: screenHeight * 0.04),
 
-                    // Dashboard Actions
-                    GridView.count(
-                      crossAxisCount: screenWidth > 1000 ? 4 : 2,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      crossAxisSpacing: 20,
-                      mainAxisSpacing: 20,
-                      childAspectRatio: 1.1,
-                      children: [
-                        _actionCard(
-                          icon: Icons.app_registration,
-                          title: "Fill Application",
-                          subtitle: "Submit a new evacuation application",
-                          iconColor: greenIconColor,
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    const ResidentRegistrationPage(),
-                              ),
-                            );
-                          },
-                        ),
-                        _actionCard(
-                          icon: Icons.qr_code,
-                          title: "View QR Code",
-                          subtitle: "Access your unique QR code",
-                          iconColor: greenIconColor,
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const ViewQrCodePage(),
-                              ),
-                            );
-                          },
-                        ),
-                        _actionCard(
-                          icon: Icons.qr_code_scanner,
-                          title: "Request QR Code",
-                          subtitle: "Request a new QR code",
-                          iconColor: greenIconColor,
-                          onTap: () {
-                            // Navigate to Request QR Page
-                          },
-                        ),
-                        _actionCard(
-                          icon: Icons.update,
-                          title: "Update Application",
-                          subtitle: "Edit or update existing applications",
-                          iconColor: greenIconColor,
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    const UpdateRegistrationPage(uid: 'UID'),
-                              ),
-                            );
-                          },
-                        ),
-                      ],
+                    // Dashboard Actions (responsive grid)
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        int crossAxisCount = 1;
+                        if (constraints.maxWidth > 1000) {
+                          crossAxisCount = 4;
+                        } else if (constraints.maxWidth > 600) {
+                          crossAxisCount = 2;
+                        }
+
+                        return GridView.count(
+                          crossAxisCount: crossAxisCount,
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          crossAxisSpacing: screenWidth * 0.02,
+                          mainAxisSpacing: screenHeight * 0.02,
+                          childAspectRatio: 1.1,
+                          children: [
+                            _actionCard(
+                              icon: Icons.app_registration,
+                              title: "Fill Application",
+                              subtitle: "Submit a new evacuation application",
+                              iconColor: greenIconColor,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        const ResidentRegistrationPage(),
+                                  ),
+                                );
+                              },
+                            ),
+                            _actionCard(
+                              icon: Icons.qr_code,
+                              title: "View QR Code",
+                              subtitle: "Access your unique QR code",
+                              iconColor: greenIconColor,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const ViewQrCodePage(),
+                                  ),
+                                );
+                              },
+                            ),
+                            _actionCard(
+                              icon: Icons.qr_code_scanner,
+                              title: "Request QR Code",
+                              subtitle: "Request a new QR code",
+                              iconColor: greenIconColor,
+                              onTap: () {},
+                            ),
+                            _actionCard(
+                              icon: Icons.update,
+                              title: "Update Application",
+                              subtitle: "Edit or update existing applications",
+                              iconColor: greenIconColor,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        const UpdateRegistrationPage(
+                                          uid: 'UID',
+                                        ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        );
+                      },
                     ),
-                    const SizedBox(height: 30),
+                    SizedBox(height: screenHeight * 0.03),
                   ],
                 ),
               ),
