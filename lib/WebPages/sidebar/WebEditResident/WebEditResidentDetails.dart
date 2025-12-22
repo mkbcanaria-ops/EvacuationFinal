@@ -1,19 +1,18 @@
-// ignore_for_file: use_build_context_synchronously, unused_local_variable
-import 'dart:convert';
+// ignore_for_file: use_build_context_synchronously, unnecessary_null_comparison
 import 'dart:io';
 import 'dart:typed_data';
-import 'dart:ui';
-import 'package:evacutaion/WebPages/WebDisplayQr.dart';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
-import 'package:qr_flutter/qr_flutter.dart';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-class ResidentRegistrationPage extends StatelessWidget {
-  const ResidentRegistrationPage({super.key});
+class WebEditResidentsDetailsPage extends StatelessWidget {
+  const WebEditResidentsDetailsPage({super.key, required this.uid});
+  final String uid; // ✅ add UID
 
   @override
   Widget build(BuildContext context) {
@@ -37,32 +36,30 @@ class ResidentRegistrationPage extends StatelessWidget {
           ),
         ),
       ),
-      body: const Center(child: ResidentRegistrationPageWidget()),
+      body: ShowRegistrationPageFormWidget(uid: uid), // pass UID to form
     );
   }
 }
 
-class ResidentRegistrationPageWidget extends StatefulWidget {
-  const ResidentRegistrationPageWidget({super.key});
+class ShowRegistrationPageFormWidget extends StatefulWidget {
+  final String uid;
+
+  const ShowRegistrationPageFormWidget({super.key, required this.uid});
 
   @override
-  State<ResidentRegistrationPageWidget> createState() =>
-      _ResidentRegistrationPageWidgetState();
+  State<ShowRegistrationPageFormWidget> createState() =>
+      _ShowRegistrationPageFormWidgetState();
 }
 
-class _ResidentRegistrationPageWidgetState
-    extends State<ResidentRegistrationPageWidget> {
+class _ShowRegistrationPageFormWidgetState
+    extends State<ShowRegistrationPageFormWidget> {
+  final TransformationController _controller = TransformationController();
+
   // Zoom settings
-  double _currentScale = 0.7; // Updated to be even more zoomed in
+  final double _initialScale = 0.4;
   final double _minScale = 0.2;
   final double _maxScale = 3.0;
   final double _zoomStep = 0.1;
-  final ScrollController _horizontalController = ScrollController();
-  final ScrollController _verticalController = ScrollController();
-  bool _isMousePanning = false;
-  int? _activePointer;
-  final double _contentWidth = 1560.0; // width of the large form content
-  bool _didCenterOnce = false;
   double _baseScale = 1.0;
 
   // Controllers
@@ -73,7 +70,8 @@ class _ResidentRegistrationPageWidgetState
   final TextEditingController _cityController = TextEditingController();
   final TextEditingController _munController = TextEditingController();
   final TextEditingController _brgyController = TextEditingController();
-
+  final TextEditingController _evacBrgyController = TextEditingController();
+  final TextEditingController _evacCenterController = TextEditingController();
   final TextEditingController _evacSiteController = TextEditingController();
   final TextEditingController _civilOtherController = TextEditingController();
   // -------------------- CONTROLLERS --------------------
@@ -89,8 +87,19 @@ class _ResidentRegistrationPageWidgetState
       TextEditingController();
   // -------------------- CONTROLLERS --------------------
   final List<Map<String, TextEditingController>> _familyRows = [];
+  final TextEditingController _dateRegisteredController =
+      TextEditingController();
   File? imageFile;
-  Uint8List? imageBytes; // ✅ ADD THIS LINE HERE - for storing image bytes
+  Uint8List? _headImageBytes; // 👈 to store downloaded image
+  String? _headImageUrl; // 👈 optional, to hold Supabase URL
+  File? _headImageFile; // New image picked from gallery
+  final ScrollController _horizontalController = ScrollController();
+  final ScrollController _verticalController = ScrollController();
+  bool _isMousePanning = false;
+  int? _activePointer;
+  final double _contentWidth = 1560.0; // width of the large form content
+  bool _didCenterOnce = false;
+  double _currentScale = 0.7; // Updated to be even more zoomed in
 
   // Civil Status
   bool _single = false;
@@ -123,20 +132,21 @@ class _ResidentRegistrationPageWidgetState
     _dateController.text = DateFormat(
       'MMMM dd, yyyy • hh:mm a',
     ).format(DateTime.now());
+    _controller.value = Matrix4.identity()..scale(_initialScale);
     for (int i = 0; i < 5; i++) {
       _familyRows.add({
         'name': TextEditingController(),
         'relation': TextEditingController(),
-        'birthdate': TextEditingController(), // ✅ NEW DOB CONTROLLER
         'age': TextEditingController(),
         'gender': TextEditingController(),
         'civilStatus': TextEditingController(),
         'education': TextEditingController(),
         'skills': TextEditingController(),
         'remarks': TextEditingController(),
-        'code': TextEditingController(), // ✅ Added for the new Code column
+        'code': TextEditingController(),
       });
     }
+    _fetchRegistrationDetails();
   }
 
   void _zoomIn() {
@@ -160,302 +170,321 @@ class _ResidentRegistrationPageWidgetState
     });
   }
 
-  Future<void> _registerSave() async {
-    final supabase = Supabase.instance.client;
-
-    // ✅ Get current logged-in user UID
-    final currentUser = supabase.auth.currentUser;
-    if (currentUser == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No logged-in user found. Please log in again.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-    final uid = currentUser.id;
-
-    // ✅ Get values from controllers
-    final disasterType = _disasterController.text.trim();
-    final date = _dateController.text.trim();
-    final city = _cityController.text.trim();
-    final municipality = _munController.text.trim();
-    final barangay = _brgyController.text.trim();
-    final site = _evacSiteController.text.trim();
-
-    // ✅ Head of Family fields
-    final headSurname = _headSurnameController.text.trim();
-    final headFirst = _headFirstController.text.trim();
-    final headMiddle = _headMiddleController.text.trim();
-    final headAge = _headAgeController.text.trim();
-    final headSex = _headSexController.text.trim();
-
-    // ✅ Additional Info fields
-    final dob = _dobController.text.trim();
-    final occupation = _occupationController.text.trim();
-    final monthlyIncome = _monthlyIncomeController.text.trim();
-
-    // ✅ Determine selected civil status
-    String civilStatus = '';
-    if (_single) {
-      civilStatus = 'Single';
-    } else if (_married) {
-      civilStatus = 'Married';
-    } else if (_widowed) {
-      civilStatus = 'Widowed';
-    } else if (_civilOtherController.text.trim().isNotEmpty) {
-      civilStatus = _civilOtherController.text.trim();
-    }
-
-    // ✅ Beneficiary and IP fields
-    final is4Ps = _is4PsBeneficiary;
-    final isIP = _isIP;
-    final ipType = _ipTypeController.text.trim();
-
-    // ✅ Get current date & time
-    final now = DateTime.now();
-    final formattedDateRegistered = DateFormat(
-      'MMMM dd, yyyy • hh:mm a',
-    ).format(now);
-
-    // ✅ Validation
-    if (disasterType.isEmpty || date.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Please fill in both Type of Disaster and Date of Occurrence.',
-          ),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    // ✅ Show loading indicator
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
-
+  Future<void> _updateRegisterSave() async {
     try {
-      // ✅ Check if user already submitted
-      final existing = await supabase
+      final supabase = Supabase.instance.client;
+
+      print('🧩 Saving registration update...');
+      print('🧩 Date of Occurrence: ${_dateController.text}');
+      print('🧩 Selected Evacuation Site: ${_evacSiteController.text}');
+
+      // Step 1: Fetch existing image
+      final existingRecord = await supabase
           .from('Registration_Table')
-          .select('Registration_ID')
-          .eq('UID', uid)
+          .select('Head_Image')
+          .eq('UID', widget.uid)
           .maybeSingle();
 
-      if (existing != null) {
-        if (!mounted) return;
-        Navigator.of(context).pop();
-        showDialog(
-          context: context,
-          builder: (_) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
+      String? oldImagePath = existingRecord?['Head_Image'];
+      String? newImagePath;
+
+      // Step 2: Upload new image if selected
+      if (_headImageFile != null) {
+        final bucket = supabase.storage.from('headimage');
+
+        // Delete old image
+        if (oldImagePath != null && oldImagePath.isNotEmpty) {
+          try {
+            await bucket.remove([oldImagePath]);
+            debugPrint('🧹 Old image deleted: $oldImagePath');
+          } catch (e) {
+            debugPrint('⚠️ Could not delete old image: $e');
+          }
+        }
+
+        // Upload new image
+        final fileName =
+            '${widget.uid}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        await bucket.upload(
+          fileName,
+          _headImageFile!,
+          fileOptions: const FileOptions(upsert: false),
+        );
+
+        newImagePath = fileName;
+        debugPrint('✅ New image uploaded: $newImagePath');
+      }
+
+      // Step 3: Prepare registration data
+      final updateData = {
+        'Head_Firstname': _headFirstController.text,
+        'Head_Middlename': _headMiddleController.text,
+        'Head_Surname': _headSurnameController.text,
+        'Head_Age': int.tryParse(_headAgeController.text) ?? 0,
+        'Head_Sex': _headSexController.text,
+        'Date_of_Birth': _dobController.text,
+        'Occupation': _occupationController.text,
+        'Monthly_Income': double.tryParse(_monthlyIncomeController.text) ?? 0,
+        'Type_of_Disaster': _disasterController.text,
+        'Date_of_Occurrence': _dateController.text,
+        'City': _cityController.text,
+        'Municipality': _munController.text,
+        'Barangay': _brgyController.text,
+        'Site': _evacSiteController.text,
+        'Civil_Status': _single
+            ? 'Single'
+            : _married
+            ? 'Married'
+            : _widowed
+            ? 'Widowed'
+            : _civilOtherController.text,
+        '4Ps_Beneficiary': _is4PsBeneficiary,
+        'IP': _isIP,
+        'IP_Type_of_Ethnicity': _ipTypeController.text,
+        if (newImagePath != null) 'Head_Image': newImagePath,
+      };
+
+      // Step 4: Update Registration_Table
+      await supabase
+          .from('Registration_Table')
+          .update(updateData)
+          .eq('UID', widget.uid);
+
+      // Step 5: Refresh family members
+      final registrationData = await supabase
+          .from('Registration_Table')
+          .select('Registration_ID')
+          .eq('UID', widget.uid)
+          .maybeSingle();
+
+      if (registrationData == null) {
+        throw Exception("Registration not found for UID: ${widget.uid}");
+      }
+
+      final registrationId = registrationData['Registration_ID'];
+
+      // Delete old family members
+      await supabase.from('Family_Members').delete().eq('UID', widget.uid);
+
+      // Insert updated family members
+      final List<Map<String, dynamic>> newFamilyMembers = [];
+      for (var row in _familyRows) {
+        newFamilyMembers.add({
+          'UID': widget.uid,
+          'Registration_ID': registrationId,
+          'Family_Member': row['name']?.text ?? '',
+          'Relation': row['relation']?.text ?? '',
+          'Age': int.tryParse(row['age']?.text ?? '') ?? 0,
+          'Gender': row['gender']?.text ?? '',
+          'Civil_Status': row['civilStatus']?.text ?? '',
+          'Education': row['education']?.text ?? '',
+          'Occupational_Skills': row['skills']?.text ?? '',
+          'Remarks': row['remarks']?.text ?? '',
+          'Code': row['code']?.text ?? '',
+        });
+      }
+
+      if (newFamilyMembers.isNotEmpty) {
+        await supabase.from('Family_Members').insert(newFamilyMembers);
+      }
+
+      // ✅ Show custom success popup
+      if (mounted) {
+        _showSuccessDialog();
+      }
+    } catch (e) {
+      debugPrint('❌ Error updating registration: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('❌ Error updating data: $e')));
+      }
+    }
+  }
+
+  // Custom success dialog
+  void _showSuccessDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              color: Colors.white,
             ),
-            backgroundColor: Colors.white,
-            title: Row(
-              children: const [
-                Icon(Icons.info_outline, color: Colors.orange),
-                SizedBox(width: 10),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.check_circle,
+                  size: 64,
+                  color: const Color(0xFF0D743D),
+                ),
+                const SizedBox(height: 16),
                 Text(
-                  'Already Submitted',
+                  "Success!",
                   style: TextStyle(
+                    fontSize: 22,
                     fontWeight: FontWeight.bold,
-                    fontSize: 20,
-                    color: Colors.black87,
+                    color: const Color(0xFF0D743D),
                   ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  "Registration and family members have been updated successfully.",
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0D743D),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
+                    ),
+                  ),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                  child: const Text("OK"),
                 ),
               ],
             ),
-            content: const Text(
-              'You have already submitted an application.\n\nPlease check your QR in View QR.',
-              style: TextStyle(fontSize: 16, color: Colors.black54),
-            ),
-            actionsPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 8,
-            ),
-            actions: [
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 12,
-                  ),
-                ),
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text(
-                  'OK',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
           ),
+        );
+      },
+    );
+  }
+
+  Future<void> _fetchRegistrationDetails() async {
+    try {
+      final supabase = Supabase.instance.client;
+
+      // ✅ Fetch main registration details
+      final registrationResponse = await supabase
+          .from('Registration_Table')
+          .select('*')
+          .eq('UID', widget.uid)
+          .maybeSingle();
+
+      // ✅ Fetch related family members
+      final familyResponse = await supabase
+          .from('Family_Members')
+          .select('*')
+          .eq('UID', widget.uid);
+
+      if (registrationResponse == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No record found for this UID')),
         );
         return;
       }
 
-      // ✅ Insert into Registration_Table
-      final inserted = await supabase
-          .from('Registration_Table')
-          .insert({
-            'UID': uid,
-            'Type_of_Disaster': disasterType,
-            'Date_of_Occurrence': date,
-            'City': city,
-            'Municipality': municipality,
-            'Barangay': barangay,
-            'Site': site,
-            'Civil_Status': civilStatus,
-            'Head_Surname': headSurname,
-            'Head_Firstname': headFirst,
-            'Head_Middlename': headMiddle,
-            'Head_Age': headAge,
-            'Head_Sex': headSex,
-            'Date_of_Birth': dob,
-            'Occupation': occupation,
-            'Monthly_Income': monthlyIncome,
-            '4Ps_Beneficiary': is4Ps,
-            'IP': isIP,
-            'IP_Type_of_Ethnicity': ipType,
-            'Date_Registered': formattedDateRegistered,
-          })
-          .select('Registration_ID, UID')
-          .single();
-
-      final registrationId = inserted['Registration_ID'];
-
-      // ✅ Upload head image
-      String? imageUrl;
-      final fileName =
-          'head_${uid}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-
-      if (imageBytes != null) {
-        await supabase.storage
-            .from('headimage')
-            .uploadBinary(
-              fileName,
-              imageBytes!,
-              fileOptions: const FileOptions(contentType: 'image/jpeg'),
-            );
-        imageUrl = supabase.storage.from('headimage').getPublicUrl(fileName);
-      } else if (imageFile != null) {
-        await supabase.storage
-            .from('headimage')
-            .upload(
-              fileName,
-              imageFile!,
-              fileOptions: const FileOptions(contentType: 'image/jpeg'),
-            );
-        imageUrl = supabase.storage.from('headimage').getPublicUrl(fileName);
-      }
-
-      if (imageUrl != null) {
-        await supabase
-            .from('Registration_Table')
-            .update({'Head_Image': imageUrl})
-            .eq('UID', uid);
-      }
-
-      // ✅ Generate QR Code
-      final qrPainter = QrPainter(
-        data: uid,
-        version: QrVersions.auto,
-        gapless: true,
-      );
-      final imageData = await qrPainter.toImageData(300);
-      final qrBytes = imageData!.buffer.asUint8List();
-      final qrBase64 = base64Encode(qrBytes);
-
-      await supabase
-          .from('Registration_Table')
-          .update({'QR_Code': qrBase64})
-          .eq('UID', uid);
-
-      // ✅ Insert Family Members with DOB and auto-calculated Age
-      for (var row in _familyRows) {
-        final name = row['name']!.text.trim();
-        final relation = row['relation']!.text.trim();
-        final dobText = row['birthdate']!.text.trim();
-        final gender = row['gender']!.text.trim();
-        final civil = row['civilStatus']!.text.trim();
-        final education = row['education']!.text.trim();
-        final skills = row['skills']!.text.trim();
-        final remarks = row['remarks']!.text.trim();
-        final code = row['code']!.text.trim();
-
-        if (name.isEmpty &&
-            relation.isEmpty &&
-            dobText.isEmpty &&
-            gender.isEmpty) {
-          continue;
-        }
-
-        int age = 0;
-        if (dobText.isNotEmpty) {
-          try {
-            final birthDate = DateTime.parse(dobText);
-            age = int.parse(calculateAge(birthDate));
-          } catch (_) {
-            age = 0;
+      // ✅ --- HEAD IMAGE FETCH (supports file path or full URL) ---
+      final headImageValue = registrationResponse['Head_Image'];
+      if (headImageValue != null && headImageValue.isNotEmpty) {
+        try {
+          if (headImageValue.startsWith('http')) {
+            _headImageUrl = headImageValue;
+            debugPrint('🖼️ Head image URL (direct): $_headImageUrl');
+          } else {
+            _headImageUrl = supabase.storage
+                .from('headimage')
+                .getPublicUrl(headImageValue);
+            debugPrint('🖼️ Head image URL (from storage): $_headImageUrl');
           }
+        } catch (e) {
+          debugPrint('❌ Error fetching head image: $e');
         }
-
-        await supabase.from('Family_Members').insert({
-          'UID': uid,
-          'Registration_ID': registrationId,
-          'Family_Member': name,
-          'Relation': relation,
-          'Date_of_Birth': dobText, // 🔥 Store DOB
-          'Age': age, // 🔥 Auto-calculated
-          'Gender': gender,
-          'Civil_Status': civil,
-          'Education': education,
-          'Occupational_Skills': skills,
-          'Remarks': remarks,
-          'Code': code,
-        });
+      } else {
+        _headImageUrl = null;
+        debugPrint('ℹ️ No head image found for this record.');
       }
 
-      // ✅ Fetch full inserted record
-      final fullRecord = await supabase
-          .from('Registration_Table')
-          .select()
-          .eq('UID', uid)
-          .single();
+      // ✅ Populate text controllers
+      _headFirstController.text = registrationResponse['Head_Firstname'] ?? '';
+      _headMiddleController.text =
+          registrationResponse['Head_Middlename'] ?? '';
+      _headSurnameController.text = registrationResponse['Head_Surname'] ?? '';
+      _headAgeController.text =
+          registrationResponse['Head_Age']?.toString() ?? '';
+      _headSexController.text = registrationResponse['Head_Sex'] ?? '';
 
-      if (!mounted) return;
-      Navigator.of(context).pop();
+      _dobController.text = registrationResponse['Date_of_Birth'] ?? '';
+      _occupationController.text = registrationResponse['Occupation'] ?? '';
+      _monthlyIncomeController.text =
+          registrationResponse['Monthly_Income']?.toString() ?? '';
 
-      // ✅ Navigate to QR Code display page
-      Navigator.pushReplacement(
+      _disasterController.text = registrationResponse['Type_of_Disaster'] ?? '';
+      _cityController.text = registrationResponse['City'] ?? '';
+      _munController.text = registrationResponse['Municipality'] ?? '';
+      _brgyController.text = registrationResponse['Barangay'] ?? '';
+      _evacBrgyController.text =
+          registrationResponse['Evacuation_Barangay'] ?? '';
+      _evacCenterController.text =
+          registrationResponse['Evacuation_Center'] ?? '';
+      _evacSiteController.text = registrationResponse['Site'] ?? '';
+      _dateRegisteredController.text =
+          registrationResponse['Date_Registered']?.toString() ?? 'N/A';
+
+      // ✅ Civil Status Handling
+      final civilStatus = registrationResponse['Civil_Status'] ?? '';
+      setState(() {
+        _single = civilStatus == 'Single';
+        _married = civilStatus == 'Married';
+        _widowed = civilStatus == 'Widowed';
+
+        if (!_single && !_married && !_widowed) {
+          _civilOtherController.text = civilStatus;
+        } else {
+          _civilOtherController.clear();
+        }
+
+        _is4PsBeneficiary = registrationResponse['4Ps_Beneficiary'] ?? false;
+        _isIP = registrationResponse['IP'] ?? false;
+        _ipTypeController.text =
+            registrationResponse['IP_Type_of_Ethnicity'] ?? '';
+      });
+
+      // ✅ Populate Family Members
+      if (familyResponse != null && familyResponse.isNotEmpty) {
+        _familyRows.clear();
+        for (var member in familyResponse) {
+          _familyRows.add({
+            'name': TextEditingController(text: member['Family_Member'] ?? ''),
+            'relation': TextEditingController(text: member['Relation'] ?? ''),
+            'age': TextEditingController(text: member['Age']?.toString() ?? ''),
+            'gender': TextEditingController(text: member['Gender'] ?? ''),
+            'civilStatus': TextEditingController(
+              text: member['Civil_Status'] ?? '',
+            ),
+            'education': TextEditingController(text: member['Education'] ?? ''),
+            'skills': TextEditingController(
+              text: member['Occupational_Skills'] ?? '',
+            ),
+            'remarks': TextEditingController(text: member['Remarks'] ?? ''),
+            'code': TextEditingController(
+              text: member['Code'] ?? '',
+            ), // ✅ new column
+          });
+        }
+      }
+
+      // ✅ Refresh UI
+      if (mounted) setState(() {});
+    } catch (e) {
+      debugPrint('❌ Error fetching registration details: $e');
+      ScaffoldMessenger.of(
         context,
-        MaterialPageRoute(
-          builder: (context) => WebQRCodeDisplayPage(
-            qrBytes: qrBytes,
-            fullName:
-                '${fullRecord['Head_Firstname']} ${fullRecord['Head_Middlename']} ${fullRecord['Head_Surname']}',
-            details: fullRecord,
-          ),
-        ),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error saving data: $error'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      ).showSnackBar(SnackBar(content: Text('Error fetching data: $e')));
     }
   }
 
@@ -1132,73 +1161,21 @@ class _ResidentRegistrationPageWidgetState
   }
 
   Widget _buildHeadOfFamilyRow() {
-    // Local inline checkbox widget
-    Widget buildCheckBox(String label, bool value, Function(bool?) onChanged) {
-      return Row(
-        children: [
-          Checkbox(
-            value: value,
-            onChanged: onChanged,
-            activeColor: Colors.orange,
-          ),
-          Text(label, style: GoogleFonts.poppins(fontSize: 20)),
-        ],
-      );
-    }
-
-    // Local inline field builder (for Age)
-    Widget buildInlineField(
-      String label,
-      TextEditingController controller, {
-      double fontSize = 22,
-      double labelFontSize = 22,
-    }) {
-      int age = int.tryParse(controller.text) ?? 0;
-      bool isValidAge = age >= 18;
-
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: GoogleFonts.poppins(
-              fontSize: labelFontSize,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          SizedBox(
-            width: 120,
-            child: TextField(
-              controller: controller,
-              keyboardType: TextInputType.number,
-              onChanged: (value) => setState(() {}),
-              decoration: InputDecoration(
-                border: const UnderlineInputBorder(),
-                errorText: isValidAge ? null : "Must be 18+",
-              ),
-              style: GoogleFonts.poppins(
-                fontSize: fontSize,
-                color: isValidAge ? Colors.black : Colors.red,
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // LEFT : HEADER + NAME FIELDS
+        // Left: Name fields
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Add more padding to move header further to the right
               Padding(
                 padding: const EdgeInsets.only(left: 130.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Header
                     Text(
                       'HEAD OF THE FAMILY',
                       style: GoogleFonts.poppins(
@@ -1207,15 +1184,19 @@ class _ResidentRegistrationPageWidgetState
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Container(width: 250, height: 2, color: Colors.black87),
+                    Container(
+                      width: 250, // line width under header
+                      height: 2,
+                      color: Colors.black87,
+                    ),
                   ],
                 ),
               ),
               const SizedBox(height: 12),
-
-              // **NAME ROW**
+              // Row for Surname / First / Middle
               Row(
                 children: [
+                  // Surname
                   SizedBox(
                     width: 160,
                     child: TextField(
@@ -1228,6 +1209,7 @@ class _ResidentRegistrationPageWidgetState
                     ),
                   ),
                   const SizedBox(width: 20),
+                  // First Name
                   SizedBox(
                     width: 160,
                     child: TextField(
@@ -1240,6 +1222,7 @@ class _ResidentRegistrationPageWidgetState
                     ),
                   ),
                   const SizedBox(width: 20),
+                  // Middle Name
                   SizedBox(
                     width: 160,
                     child: TextField(
@@ -1257,23 +1240,24 @@ class _ResidentRegistrationPageWidgetState
           ),
         ),
 
-        // RIGHT : AGE + SEX
+        // Add padding to push Age & Sex further to the right
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.only(left: 100.0),
+            padding: const EdgeInsets.only(
+              left: 220.0,
+            ), // adjust this value to move further right
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // AGE (MUST BE 18+)
-                buildInlineField(
-                  "Age:",
+                // Age
+                _buildInlineField(
+                  'Age:',
                   _headAgeController,
                   fontSize: 22,
                   labelFontSize: 22,
                 ),
-                const SizedBox(height: 16),
-
-                // SEX SELECTION
+                const SizedBox(height: 12),
+                // Sex label and choices in a row
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
@@ -1285,19 +1269,25 @@ class _ResidentRegistrationPageWidgetState
                       ),
                     ),
                     const SizedBox(width: 12),
-
                     // Male
-                    buildCheckBox('M', _headSexController.text == 'M', (val) {
+                    _buildCheckBox('M', _headSexController.text == 'M', (val) {
                       setState(() {
-                        _headSexController.text = val! ? 'M' : '';
+                        if (val!) {
+                          _headSexController.text = 'M';
+                        } else {
+                          _headSexController.text = '';
+                        }
                       });
                     }),
                     const SizedBox(width: 10),
-
                     // Female
-                    buildCheckBox('F', _headSexController.text == 'F', (val) {
+                    _buildCheckBox('F', _headSexController.text == 'F', (val) {
                       setState(() {
-                        _headSexController.text = val! ? 'F' : '';
+                        if (val!) {
+                          _headSexController.text = 'F';
+                        } else {
+                          _headSexController.text = '';
+                        }
                       });
                     }),
                   ],
@@ -1315,7 +1305,7 @@ class _ResidentRegistrationPageWidgetState
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // DATE OF BIRTH
+        // Date of Birth
         Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -1323,12 +1313,12 @@ class _ResidentRegistrationPageWidgetState
               width: 220,
               child: TextField(
                 controller: _dobController,
-                textAlign: TextAlign.center,
+                textAlign: TextAlign.center, // center text
                 readOnly: true,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   hintText: 'Select Date',
-                  border: UnderlineInputBorder(),
-                  suffixIcon: Icon(Icons.calendar_today),
+                  border: const UnderlineInputBorder(),
+                  suffixIcon: const Icon(Icons.calendar_today),
                 ),
                 style: GoogleFonts.poppins(fontSize: 22),
                 onTap: () async {
@@ -1340,16 +1330,8 @@ class _ResidentRegistrationPageWidgetState
                   );
 
                   if (pickedDate != null) {
-                    int age = _calculateAge(pickedDate);
-
-                    if (age < 18) {
-                      _showUnderagePopup();
-                      return; // Prevent updating DOB
-                    }
-
                     String formattedDate =
                         "${_formatMonth(pickedDate.month)}, ${pickedDate.day}, ${pickedDate.year}";
-
                     setState(() {
                       _dobController.text = formattedDate;
                     });
@@ -1370,7 +1352,7 @@ class _ResidentRegistrationPageWidgetState
 
         const SizedBox(width: 200),
 
-        // OCCUPATION
+        // Occupation
         Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -1378,7 +1360,7 @@ class _ResidentRegistrationPageWidgetState
               width: 220,
               child: TextField(
                 controller: _occupationController,
-                textAlign: TextAlign.center,
+                textAlign: TextAlign.center, // center text
                 decoration: const InputDecoration(
                   hintText: '',
                   border: UnderlineInputBorder(),
@@ -1399,7 +1381,7 @@ class _ResidentRegistrationPageWidgetState
 
         const SizedBox(width: 200),
 
-        // MONTHLY INCOME
+        // Monthly Income
         Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -1407,7 +1389,7 @@ class _ResidentRegistrationPageWidgetState
               width: 220,
               child: TextField(
                 controller: _monthlyIncomeController,
-                textAlign: TextAlign.center,
+                textAlign: TextAlign.center, // center text
                 decoration: const InputDecoration(
                   hintText: '',
                   border: UnderlineInputBorder(),
@@ -1427,78 +1409,6 @@ class _ResidentRegistrationPageWidgetState
           ],
         ),
       ],
-    );
-  }
-
-  /// CALCULATE AGE
-  int _calculateAge(DateTime birthDate) {
-    DateTime today = DateTime.now();
-    int age = today.year - birthDate.year;
-    if (today.month < birthDate.month ||
-        (today.month == birthDate.month && today.day < birthDate.day)) {
-      age--;
-    }
-    return age;
-  }
-
-  /// UNDERAGE POPUP
-  void _showUnderagePopup() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.error_outline, size: 60, color: Colors.redAccent),
-                const SizedBox(height: 16),
-                Text(
-                  "Age Restriction",
-                  style: GoogleFonts.poppins(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  "The selected date makes the individual under 18.\nPlease select a valid birthdate (18 years old and above).",
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.poppins(fontSize: 16),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    backgroundColor: Colors.redAccent,
-                  ),
-                  onPressed: () {
-                    Navigator.pop(dialogContext);
-                  },
-                  child: Text(
-                    "OK",
-                    style: GoogleFonts.poppins(
-                      fontSize: 18,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
     );
   }
 
@@ -1562,38 +1472,12 @@ class _ResidentRegistrationPageWidgetState
       ],
     );
   }
-  // Initialize 5 default rows in initState()
 
-  // ---------------- AGE CALCULATOR FUNCTION ----------------
-  String calculateAge(DateTime birthDate) {
-    DateTime today = DateTime.now();
-
-    int years = today.year - birthDate.year;
-    int months = today.month - birthDate.month;
-    int days = today.day - birthDate.day;
-
-    if (days < 0) {
-      months--;
-      days += DateTime(birthDate.year, birthDate.month + 1, 0).day;
-    }
-    if (months < 0) {
-      years--;
-      months += 12;
-    }
-
-    if (years > 0) {
-      return "$years";
-    } else {
-      return "$months month${months > 1 ? 's' : ''}";
-    }
-  }
-
-  // ------------- FAMILY MEMBERS TABLE WIDGET -------------
   Widget _buildFamilyMembersTable() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Header
+        // Table Header (centered)
         Padding(
           padding: const EdgeInsets.only(bottom: 12.0),
           child: Column(
@@ -1607,15 +1491,15 @@ class _ResidentRegistrationPageWidgetState
                 ),
               ),
               const SizedBox(height: 6),
-              Container(width: 400, height: 2, color: Colors.black87),
+              Container(width: 1560, height: 2, color: Colors.black87),
             ],
           ),
         ),
 
-        // Table
+        // Table container
         Center(
           child: Container(
-            width: 1700, // wide enough for delete column
+            width: 1560,
             decoration: BoxDecoration(
               border: Border.all(color: Colors.black87, width: 1.2),
               borderRadius: BorderRadius.circular(6),
@@ -1625,24 +1509,22 @@ class _ResidentRegistrationPageWidgetState
               columnWidths: const {
                 0: FlexColumnWidth(2.2), // Family Members
                 1: FlexColumnWidth(2.2), // Relation
-                2: FlexColumnWidth(2.8), // Date of Birth
-                3: FlexColumnWidth(1), // Age
-                4: FlexColumnWidth(1.4), // Gender
-                5: FlexColumnWidth(1.5), // Civil Status
-                6: FlexColumnWidth(1.5), // Education
-                7: FlexColumnWidth(2.5), // Skills
-                8: FlexColumnWidth(2.5), // Remarks
-                9: FlexColumnWidth(1.2), // Code
-                10: FlexColumnWidth(1.3), // Delete
+                2: FlexColumnWidth(1), // Age
+                3: FlexColumnWidth(1), // Gender
+                4: FlexColumnWidth(1.5), // Civil Status
+                5: FlexColumnWidth(1.5), // Educ.
+                6: FlexColumnWidth(2.5), // Occupational Skills
+                7: FlexColumnWidth(2.5), // Remarks
+                8: FlexColumnWidth(1), // Code
+                9: FlexColumnWidth(1), // Actions (new)
               },
               children: [
-                // Header Row
+                // Table Header Row
                 TableRow(
                   decoration: BoxDecoration(color: Colors.grey[200]),
                   children: [
                     _buildTableHeader('Family Members'),
                     _buildTableHeader('Relation to Family Head'),
-                    _buildTableHeader('Date of Birth'),
                     _buildTableHeader('Age'),
                     _buildTableHeader('Gender'),
                     _buildTableHeader('Civil Status'),
@@ -1650,44 +1532,49 @@ class _ResidentRegistrationPageWidgetState
                     _buildTableHeader('Occupational Skills'),
                     _buildTableHeader('Remarks'),
                     _buildTableHeader('Code'),
-                    _buildTableHeader('Delete'),
+                    _buildTableHeader('Actions'), // New header for actions
                   ],
                 ),
-
-                // Data Rows
-                for (int index = 0; index < _familyRows.length; index++)
+                // Dynamic Data Rows
+                for (var row in _familyRows)
                   TableRow(
                     children: [
-                      _buildTableTextField(_familyRows[index]['name']!),
-                      _buildTableTextField(_familyRows[index]['relation']!),
-                      _buildDatePickerField(
-                        _familyRows[index]['birthdate']!,
-                        _familyRows[index]['age']!,
-                      ),
-                      _buildTableTextField(
-                        _familyRows[index]['age']!,
-                        disabled: true,
-                      ),
-                      _buildTableTextField(_familyRows[index]['gender']!),
-                      _buildTableTextField(_familyRows[index]['civilStatus']!),
-                      _buildTableTextField(_familyRows[index]['education']!),
-                      _buildTableTextField(_familyRows[index]['skills']!),
-                      _buildTableTextField(_familyRows[index]['remarks']!),
-                      _buildTableTextField(_familyRows[index]['code']!),
-                      // Delete Button
+                      _buildTableTextField(row['name']!),
+                      _buildTableTextField(row['relation']!),
+                      _buildTableTextField(row['age']!),
+                      _buildTableTextField(row['gender']!),
+                      _buildTableTextField(row['civilStatus']!),
+                      _buildTableTextField(row['education']!),
+                      _buildTableTextField(row['skills']!),
+                      _buildTableTextField(row['remarks']!),
+                      _buildTableTextField(row['code']!),
+                      // New cell for remove button
                       Padding(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 6,
                           vertical: 4,
                         ),
-                        child: IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red),
-                          tooltip: 'Delete this row',
-                          onPressed: () {
-                            setState(() {
-                              _familyRows.removeAt(index);
-                            });
-                          },
+                        child: Center(
+                          child: IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            onPressed: () {
+                              setState(() {
+                                // Dispose controllers to avoid memory leaks
+                                row['name']!.dispose();
+                                row['relation']!.dispose();
+                                row['age']!.dispose();
+                                row['gender']!.dispose();
+                                row['civilStatus']!.dispose();
+                                row['education']!.dispose();
+                                row['skills']!.dispose();
+                                row['remarks']!.dispose();
+                                row['code']!.dispose();
+                                // Remove the row
+                                _familyRows.remove(row);
+                              });
+                            },
+                            tooltip: 'Remove Row',
+                          ),
                         ),
                       ),
                     ],
@@ -1703,7 +1590,10 @@ class _ResidentRegistrationPageWidgetState
         ElevatedButton.icon(
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF0D743D),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 20.0,
+              vertical: 12.0,
+            ),
           ),
           icon: const Icon(Icons.add_circle_outline, color: Colors.white),
           label: Text(
@@ -1719,7 +1609,6 @@ class _ResidentRegistrationPageWidgetState
               _familyRows.add({
                 'name': TextEditingController(),
                 'relation': TextEditingController(),
-                'birthdate': TextEditingController(),
                 'age': TextEditingController(),
                 'gender': TextEditingController(),
                 'civilStatus': TextEditingController(),
@@ -1735,7 +1624,7 @@ class _ResidentRegistrationPageWidgetState
     );
   }
 
-  // -------------------- TABLE HELPERS --------------------
+  // Helper: Table header cell
   Widget _buildTableHeader(String label) {
     return Padding(
       padding: const EdgeInsets.all(8.0),
@@ -1749,15 +1638,12 @@ class _ResidentRegistrationPageWidgetState
     );
   }
 
-  Widget _buildTableTextField(
-    TextEditingController controller, {
-    bool disabled = false,
-  }) {
+  // Helper: Table text field cell
+  Widget _buildTableTextField(TextEditingController controller) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       child: TextField(
         controller: controller,
-        enabled: !disabled,
         textAlign: TextAlign.center,
         decoration: const InputDecoration(
           border: InputBorder.none,
@@ -1765,62 +1651,6 @@ class _ResidentRegistrationPageWidgetState
           contentPadding: EdgeInsets.symmetric(vertical: 8),
         ),
         style: GoogleFonts.poppins(fontSize: 16),
-      ),
-    );
-  }
-
-  // -------------------- DATE PICKER FIELD --------------------
-  Widget _buildDatePickerField(
-    TextEditingController birthController,
-    TextEditingController ageController,
-  ) {
-    bool hasSelectedDate = birthController.text.isNotEmpty;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          if (!hasSelectedDate)
-            Text(
-              "Select your birthday",
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          if (!hasSelectedDate) const SizedBox(height: 4),
-          GestureDetector(
-            onTap: () async {
-              DateTime now = DateTime.now();
-              DateTime? pickedDate = await showDatePicker(
-                context: context,
-                initialDate: now,
-                firstDate: DateTime(now.year - 100),
-                lastDate: now,
-              );
-
-              if (pickedDate != null) {
-                birthController.text =
-                    "${pickedDate.year}-${pickedDate.month.toString().padLeft(2, '0')}-${pickedDate.day.toString().padLeft(2, '0')}";
-                ageController.text = calculateAge(pickedDate);
-                setState(() {});
-              }
-            },
-            child: AbsorbPointer(
-              child: TextField(
-                controller: birthController,
-                textAlign: TextAlign.center,
-                decoration: const InputDecoration(
-                  border: InputBorder.none,
-                  isDense: true,
-                  contentPadding: EdgeInsets.symmetric(vertical: 8),
-                ),
-                style: GoogleFonts.poppins(fontSize: 16),
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -1915,13 +1745,7 @@ class _ResidentRegistrationPageWidgetState
     );
   }
 
-  // ------------- DATE REGISTERED (Centered Line with Date) -------------
   Widget _buildDateRegisteredSection() {
-    // Get formatted current date and time with AM/PM
-    String formattedDate = DateFormat(
-      'MMMM dd, yyyy • hh:mm a',
-    ).format(DateTime.now());
-
     return Center(
       child: Column(
         children: [
@@ -1935,11 +1759,12 @@ class _ResidentRegistrationPageWidgetState
           ),
           const SizedBox(height: 8),
 
-          // TextField with underline style
+          // TextField displaying the inserted date/time from DB
           SizedBox(
             width: 320,
             child: TextField(
-              controller: TextEditingController(text: formattedDate),
+              controller:
+                  _dateRegisteredController, // ✅ now uses your fetched data
               readOnly: true,
               textAlign: TextAlign.center,
               style: GoogleFonts.poppins(fontSize: 18, color: Colors.black87),
@@ -1962,16 +1787,12 @@ class _ResidentRegistrationPageWidgetState
     );
   }
 
-  // ------------- HEAD OF FAMILY IMAGE (Larger Left-aligned Box Design) -------------
   Widget _buildHeadOfFamilyImageSection() {
-    // ✅ Move this outside the StatefulBuilder to preserve the image
-
     return Padding(
       padding: const EdgeInsets.only(left: 24.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Label
           Text(
             'Head of the Family (Photo)',
             style: GoogleFonts.poppins(
@@ -1981,150 +1802,143 @@ class _ResidentRegistrationPageWidgetState
           ),
           const SizedBox(height: 16),
 
-          // Image Box with tap/long-press actions
-          StatefulBuilder(
-            builder: (context, setState) {
-              // ✅ Function to pick image
-              Future<void> _pickImage() async {
-                final picker = ImagePicker();
-                final picked = await picker.pickImage(
-                  source: ImageSource.gallery,
-                );
-
-                if (picked != null) {
-                  // ✅ Store file for upload and bytes for display (web-compatible)
-                  setState(() {
-                    imageFile = File(picked.path);
-                    // Load bytes for display (handles web blob URLs better)
-                    picked.readAsBytes().then((bytes) {
-                      setState(() => imageBytes = bytes);
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 🖼️ Image box with tap & long press actions
+              GestureDetector(
+                onTap: () async {
+                  final picker = ImagePicker();
+                  final picked = await picker.pickImage(
+                    source: ImageSource.gallery,
+                  );
+                  if (picked != null) {
+                    setState(() {
+                      _headImageFile = File(picked.path);
+                      _headImageBytes = null;
+                      _headImageUrl = null;
                     });
-                  });
-                }
-              }
+                  }
+                },
+                onLongPress:
+                    (_headImageFile != null ||
+                        _headImageBytes != null ||
+                        _headImageUrl != null)
+                    ? () async {
+                        final shouldRemove = await showDialog<bool>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: Text(
+                              'Remove Image',
+                              style: GoogleFonts.poppins(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            content: Text(
+                              'Do you want to remove this image?',
+                              style: GoogleFonts.poppins(),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, false),
+                                child: Text('No', style: GoogleFonts.poppins()),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, true),
+                                child: Text(
+                                  'Yes',
+                                  style: GoogleFonts.poppins(color: Colors.red),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
 
-              // ✅ Function to confirm image removal
-              Future<void> _confirmRemoveImage() async {
-                final shouldRemove = await showDialog<bool>(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: Text(
-                      'Remove Image',
-                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-                    ),
-                    content: Text(
-                      'Do you want to remove this image?',
-                      style: GoogleFonts.poppins(),
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, false),
-                        child: Text('No', style: GoogleFonts.poppins()),
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, true),
-                        child: Text(
-                          'Yes',
-                          style: GoogleFonts.poppins(color: Colors.red),
-                        ),
+                        if (shouldRemove == true) {
+                          setState(() {
+                            _headImageFile = null;
+                            _headImageBytes = null;
+                            _headImageUrl = null;
+                          });
+                        }
+                      }
+                    : null,
+                child: Container(
+                  width: 240,
+                  height: 240,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[200],
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.black54, width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black26.withOpacity(0.15),
+                        blurRadius: 10,
+                        offset: const Offset(3, 5),
                       ),
                     ],
                   ),
-                );
-
-                if (shouldRemove == true) {
-                  setState(() {
-                    imageFile = null;
-                    imageBytes = null; // ✅ Clear bytes too
-                  });
-                }
-              }
-
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Image container (box)
-                  GestureDetector(
-                    onTap: _pickImage,
-                    onLongPress: imageFile != null ? _confirmRemoveImage : null,
-                    child: Container(
-                      width: 240, // 🟢 Bigger width
-                      height: 240, // 🟢 Bigger height
-                      decoration: BoxDecoration(
-                        color: Colors.grey[200],
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.black54, width: 2),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black26.withOpacity(0.15),
-                            blurRadius: 10,
-                            offset: const Offset(3, 5),
-                          ),
-                        ],
-                      ),
-                      child: imageBytes != null
-                          ? ClipRRect(
-                              borderRadius: BorderRadius.circular(
-                                18,
-                              ), // Match container
-                              child: Image.memory(
-                                imageBytes!,
-                                fit: BoxFit.cover,
-                                width: 240,
-                                height: 240,
-                              ),
-                            )
-                          : Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.add_a_photo,
-                                    size: 50,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: _headImageFile != null
+                        ? Image.file(_headImageFile!, fit: BoxFit.cover)
+                        : _headImageBytes != null
+                        ? Image.memory(_headImageBytes!, fit: BoxFit.cover)
+                        : _headImageUrl != null
+                        ? Image.network(
+                            _headImageUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) =>
+                                const Icon(Icons.broken_image, size: 80),
+                          )
+                        : Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(
+                                  Icons.add_a_photo,
+                                  size: 50,
+                                  color: Colors.black54,
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  'Attach Photo',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 16,
                                     color: Colors.black54,
                                   ),
-                                  const SizedBox(height: 10),
-                                  Text(
-                                    'Attach Photo',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 16,
-                                      color: Colors.black54,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
-                    ),
+                          ),
                   ),
+                ),
+              ),
 
-                  // Right-side hint text
-                  const SizedBox(width: 24),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 16.0),
-                      child: Text(
-                        imageFile == null
-                            ? 'Tap the box to attach the Head of the Family photo.\n'
-                                  'Make sure the image is clear and front-facing.'
-                            : 'Long press the image to remove or replace it.',
-                        style: GoogleFonts.poppins(
-                          fontSize: 15,
-                          color: Colors.black87,
-                          height: 1.4,
-                        ),
-                      ),
+              const SizedBox(width: 24),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 16.0),
+                  child: Text(
+                    (_headImageFile == null &&
+                            _headImageBytes == null &&
+                            _headImageUrl == null)
+                        ? 'Tap the box to attach the Head of the Family photo.\nMake sure the image is clear and front-facing.'
+                        : 'Long press the image to remove or replace it.',
+                    style: GoogleFonts.poppins(
+                      fontSize: 15,
+                      color: Colors.black87,
+                      height: 1.4,
                     ),
                   ),
-                ],
-              );
-            },
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
-
-  // ------------- SUBMIT BUTTON (Centered) -------------
 
   Widget _buildSubmitButton() {
     return Center(
@@ -2141,7 +1955,7 @@ class _ResidentRegistrationPageWidgetState
           elevation: 6,
         ),
         onPressed: () {
-          _registerSave(); // ✅ new function call
+          _updateRegisterSave(); // ✅ new function call
         },
         child: Text(
           'SUBMIT',

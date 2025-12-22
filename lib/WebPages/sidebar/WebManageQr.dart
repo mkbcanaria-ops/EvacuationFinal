@@ -1,8 +1,9 @@
 import 'dart:convert';
 
+import 'package:evacutaion/WebPages/ManualViewQR/ProcessQr.dart';
 import 'package:evacutaion/WebPages/sidebar/Discharge%20Function/WebDischargeScanner.dart';
-import 'package:evacutaion/WebPages/Report/Report.dart';
-import 'package:evacutaion/WebPages/Request/Request.dart';
+import 'package:evacutaion/WebPages/sidebar/Report/Report.dart';
+import 'package:evacutaion/WebPages/sidebar/Request/Request.dart';
 import 'package:evacutaion/WebPages/WebMainDashboard.dart';
 import 'package:evacutaion/WebPages/sidebar/WebManageResidents.dart';
 import 'package:flutter/material.dart';
@@ -124,7 +125,7 @@ class _WebDisplayAllQrPageState extends State<WebDisplayAllQrPage> {
                     crossAxisCount = 3;
                   }
 
-                  double childAspectRatio = (width / crossAxisCount) / 280;
+                  double childAspectRatio = (width / crossAxisCount) / 330;
 
                   return Padding(
                     padding: const EdgeInsets.all(12.0),
@@ -205,7 +206,6 @@ class _WebDisplayAllQrPageState extends State<WebDisplayAllQrPage> {
                                 child: Padding(
                                   padding: const EdgeInsets.all(12.0),
                                   child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       Expanded(
                                         child: qrBytes != null
@@ -220,18 +220,19 @@ class _WebDisplayAllQrPageState extends State<WebDisplayAllQrPage> {
                                               ),
                                       ),
                                       const SizedBox(height: 12),
-                                      Flexible(
-                                        child: Text(
-                                          fullName,
-                                          textAlign: TextAlign.center,
-                                          overflow: TextOverflow.ellipsis,
-                                          maxLines: 2,
-                                          style: GoogleFonts.poppins(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 16,
-                                          ),
+
+                                      // 🧍‍♂️ Name
+                                      Text(
+                                        fullName,
+                                        textAlign: TextAlign.center,
+                                        overflow: TextOverflow.ellipsis,
+                                        maxLines: 2,
+                                        style: GoogleFonts.poppins(
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 16,
                                         ),
                                       ),
+
                                       const SizedBox(height: 6),
                                       Text(
                                         'Registered: $date',
@@ -239,6 +240,54 @@ class _WebDisplayAllQrPageState extends State<WebDisplayAllQrPage> {
                                         style: GoogleFonts.poppins(
                                           fontSize: 13,
                                           color: Colors.grey[700],
+                                        ),
+                                      ),
+
+                                      const SizedBox(height: 12),
+
+                                      // Inside the GridView.builder itemBuilder, replace the ElevatedButton:
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: ElevatedButton(
+                                          onPressed: () {
+                                            // Navigate to ViewQrCodePage and pass the selected record
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (context) => ManualViewQrPage(
+                                                  firstName:
+                                                      record['Head_Firstname'] ??
+                                                      '',
+                                                  middleName:
+                                                      record['Head_Middlename'] ??
+                                                      '',
+                                                  lastName:
+                                                      record['Head_Surname'] ??
+                                                      '',
+                                                  qrData: record['UID'] ?? '',
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: const Color(
+                                              0xFF0D743D,
+                                            ),
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 10,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                          ),
+                                          child: Text(
+                                            "VIEW",
+                                            style: GoogleFonts.poppins(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
                                         ),
                                       ),
                                     ],
@@ -279,7 +328,6 @@ class _WebDisplayAllQrPageState extends State<WebDisplayAllQrPage> {
                 ),
               ),
 
-              // Drawer items
               _buildDrawerItem('Dashboard', Icons.dashboard_outlined),
               _buildDrawerItem(
                 'Resident Management',
@@ -302,7 +350,6 @@ class _WebDisplayAllQrPageState extends State<WebDisplayAllQrPage> {
     );
   }
 
-  // 🔹 Drawer Item Widget with if-else navigation logic
   Widget _buildDrawerItem(String title, IconData icon) {
     final bool isSelected = selectedPage == title;
 
@@ -327,7 +374,6 @@ class _WebDisplayAllQrPageState extends State<WebDisplayAllQrPage> {
 
         Navigator.pop(context);
 
-        // 🧭 Navigation logic
         if (title == 'Dashboard') {
           Navigator.pushReplacement(
             context,

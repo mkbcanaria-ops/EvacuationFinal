@@ -1,4 +1,5 @@
 import 'package:evacutaion/ResidentPAges/ResidentRegistration.dart';
+import 'package:evacutaion/ResidentPAges/ResidentRequestQrCode.dart';
 import 'package:evacutaion/ResidentPAges/UpdateApplication.dart';
 import 'package:evacutaion/WebPages/sidebar/ViewQrCode.dart';
 import 'package:flutter/material.dart';
@@ -134,7 +135,7 @@ class _ResidentDashboardPageState extends State<ResidentDashboardPage> {
                         border: Border.all(color: Colors.grey.shade400),
                       ),
                       child: Text(
-                        "👋 Welcome ${userName ?? ''} to Santa Evacuation Portal",
+                        "👋 Welcome ${userName ?? ''} to MSWDO-Santa  eCamp Management System ",
                         style: TextStyle(
                           fontSize: bodyFont,
                           color: Colors.black87,
@@ -219,8 +220,17 @@ class _ResidentDashboardPageState extends State<ResidentDashboardPage> {
                               title: "Request QR Code",
                               subtitle: "Request a new QR code",
                               iconColor: greenIconColor,
-                              onTap: () {},
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        const ResidentQrRequestPage(),
+                                  ),
+                                );
+                              },
                             ),
+
                             _actionCard(
                               icon: Icons.update,
                               title: "Update Application",

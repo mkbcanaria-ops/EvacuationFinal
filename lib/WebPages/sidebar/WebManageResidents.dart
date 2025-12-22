@@ -1,12 +1,11 @@
 // ignore_for_file: unnecessary_type_check
-
-import 'package:evacutaion/App/EditResidentDetails.dart';
 import 'package:evacutaion/WebPages/sidebar/Discharge%20Function/WebDischargeScanner.dart';
-import 'package:evacutaion/WebPages/Report/Report.dart';
-import 'package:evacutaion/WebPages/Request/Request.dart';
+import 'package:evacutaion/WebPages/sidebar/Report/Report.dart';
+import 'package:evacutaion/WebPages/sidebar/Request/Request.dart';
 import 'package:evacutaion/WebPages/WebMainDashboard.dart';
 import 'package:evacutaion/WebPages/Web_Registration.dart';
 import 'package:evacutaion/WebPages/sidebar/WebArchiveUsers.dart';
+import 'package:evacutaion/WebPages/sidebar/WebEditResident/WebEditResidentDetails.dart';
 import 'package:evacutaion/WebPages/sidebar/WebManageQr.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -571,7 +570,7 @@ class _WebManageResidentsPageState extends State<WebManageResidentsPage> {
                                               context,
                                               MaterialPageRoute(
                                                 builder: (context) =>
-                                                    EditResidentsDetailsPage(
+                                                    WebEditResidentsDetailsPage(
                                                       uid: resident['UID']
                                                           .toString(),
                                                     ),

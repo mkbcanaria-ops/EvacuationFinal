@@ -1,8 +1,8 @@
 // ignore_for_file: unnecessary_type_check, unused_local_variable
 
 import 'package:evacutaion/WebPages/sidebar/Discharge%20Function/WebDischargeScanner.dart';
-import 'package:evacutaion/WebPages/Report/Report.dart';
-import 'package:evacutaion/WebPages/Request/Request.dart';
+import 'package:evacutaion/WebPages/sidebar/Report/Report.dart';
+import 'package:evacutaion/WebPages/sidebar/Request/Request.dart';
 import 'package:evacutaion/WebPages/ResidentDeployment/Web_Qr_Scanner.dart';
 import 'package:evacutaion/WebPages/Web_Registration.dart';
 import 'package:evacutaion/WebPages/sidebar/WebManageQr.dart';
@@ -430,7 +430,7 @@ class _WebMainDashboardState extends State<WebMainDashboard> {
   Future<void> _refreshData() async {
     await _fetchRegisteredResidents();
     await _fetchEvacuatedResidents();
-    await _fetchMagsaysayCenterCount();
+
     await _fetchFarmersCourtCount();
     await _fetchSantaRhuCount();
     await _fetchSantaHighSchoolCount();
@@ -560,11 +560,11 @@ class _WebMainDashboardState extends State<WebMainDashboard> {
                     null,
                   ),
                   _evacuationCenterCard(
-                    "Municipal Evacuation Center",
+                    "Municipal Evacuation Center, Magsaysay",
                     _magsaysayCount,
                     250,
                   ),
-                  _evacuationCenterCard("Magsaysay", _farmersCourtCount, 200),
+
                   _evacuationCenterCard(
                     "Municipal Farmer’s Covered Court",
                     _farmersCourtCount,

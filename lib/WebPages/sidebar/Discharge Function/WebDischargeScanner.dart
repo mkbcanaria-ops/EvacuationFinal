@@ -1,5 +1,5 @@
-import 'package:evacutaion/WebPages/Report/Report.dart';
-import 'package:evacutaion/WebPages/Request/Request.dart';
+import 'package:evacutaion/WebPages/sidebar/Report/Report.dart';
+import 'package:evacutaion/WebPages/sidebar/Request/Request.dart';
 import 'package:evacutaion/WebPages/sidebar/Discharge%20Function/WebDischargeResidentsDetails.dart';
 import 'package:evacutaion/WebPages/WebMainDashboard.dart';
 import 'package:evacutaion/WebPages/sidebar/WebManageQr.dart';

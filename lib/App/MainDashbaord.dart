@@ -5,8 +5,8 @@ import 'package:evacutaion/App/Qr_Scanner.dart';
 import 'package:evacutaion/App/RegistrationPage.dart';
 import 'package:evacutaion/App/Sidebar/ManageQR.dart';
 import 'package:evacutaion/App/Sidebar/ManageResidents.dart';
-import 'package:evacutaion/WebPages/Report/Report.dart';
-import 'package:evacutaion/WebPages/Request/Request.dart';
+import 'package:evacutaion/WebPages/sidebar/Report/Report.dart';
+import 'package:evacutaion/WebPages/sidebar/Request/Request.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 

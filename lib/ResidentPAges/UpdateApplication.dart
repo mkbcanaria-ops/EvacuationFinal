@@ -1,6 +1,7 @@
 // ignore_for_file: use_build_context_synchronously, unnecessary_null_comparison
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:evacutaion/ResidentPAges/ResidentDashboard.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
@@ -129,6 +130,7 @@ class _UpdateRegistrationPageWidgetState
         'name': TextEditingController(),
         'relation': TextEditingController(),
         'age': TextEditingController(),
+        'birthdate': TextEditingController(), // ✅ NEW DOB CONTROLLER
         'gender': TextEditingController(),
         'civilStatus': TextEditingController(),
         'education': TextEditingController(),
@@ -190,7 +192,6 @@ class _UpdateRegistrationPageWidgetState
       if (_headImageFile != null) {
         final bucket = supabase.storage.from('headimage');
 
-        // Delete old image
         if (oldImagePath != null && oldImagePath.isNotEmpty) {
           try {
             await bucket.remove([oldImagePath]);
@@ -200,7 +201,6 @@ class _UpdateRegistrationPageWidgetState
           }
         }
 
-        // Upload new image
         final fileName = '${uid}_${DateTime.now().millisecondsSinceEpoch}.jpg';
         await bucket.upload(
           fileName,
@@ -241,13 +241,11 @@ class _UpdateRegistrationPageWidgetState
         if (newImagePath != null) 'Head_Image': newImagePath,
       };
 
-      // Step 4: Update Registration_Table
       await supabase
           .from('Registration_Table')
           .update(updateData)
           .eq('UID', uid);
 
-      // Step 5: Update Family Members
       final registrationData = await supabase
           .from('Registration_Table')
           .select('Registration_ID')
@@ -260,10 +258,8 @@ class _UpdateRegistrationPageWidgetState
 
       final registrationId = registrationData['Registration_ID'];
 
-      // Delete old family members
       await supabase.from('Family_Members').delete().eq('UID', uid);
 
-      // Insert updated family members
       final List<Map<String, dynamic>> newFamilyMembers = [];
       for (var row in _familyRows) {
         newFamilyMembers.add({
@@ -271,6 +267,7 @@ class _UpdateRegistrationPageWidgetState
           'Registration_ID': registrationId,
           'Family_Member': row['name']?.text ?? '',
           'Relation': row['relation']?.text ?? '',
+          'Date_of_Birth': row['birthdate']?.text ?? '',
           'Age': int.tryParse(row['age']?.text ?? '') ?? 0,
           'Gender': row['gender']?.text ?? '',
           'Civil_Status': row['civilStatus']?.text ?? '',
@@ -285,14 +282,62 @@ class _UpdateRegistrationPageWidgetState
         await supabase.from('Family_Members').insert(newFamilyMembers);
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('✅ Registration updated successfully!')),
-      );
+      // ✅ Modern success dialog with auto navigation
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false, // prevent closing manually
+          builder: (context) => Dialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.check_circle_outline,
+                    color: Colors.green,
+                    size: 60,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Success!',
+                    style: GoogleFonts.poppins(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Registration updated successfully.',
+                    style: GoogleFonts.poppins(fontSize: 16),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+
+        // Auto close dialog after 2 seconds and navigate
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) {
+            Navigator.of(context).pop(); // close dialog
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => ResidentDashboardPage()),
+            );
+          }
+        });
+      }
     } catch (e) {
       debugPrint('❌ Error updating registration: $e');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('❌ Error updating data: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('❌ Error updating data: $e')));
+      }
     }
   }
 
@@ -348,7 +393,7 @@ class _UpdateRegistrationPageWidgetState
         _headImageUrl = null;
       }
 
-      // ✅ Populate text controllers
+      // ✅ Populate main registration text controllers
       _headFirstController.text = registrationResponse['Head_Firstname'] ?? '';
       _headMiddleController.text =
           registrationResponse['Head_Middlename'] ?? '';
@@ -395,10 +440,27 @@ class _UpdateRegistrationPageWidgetState
       _familyRows.clear();
       if (familyResponse != null && familyResponse.isNotEmpty) {
         for (var member in familyResponse) {
+          String dobString = member['Date_of_Birth'] ?? '';
+          TextEditingController birthController = TextEditingController(
+            text: dobString,
+          );
+
+          // Calculate age if DOB is present
+          TextEditingController ageController = TextEditingController();
+          if (dobString.isNotEmpty) {
+            try {
+              DateTime dob = DateTime.parse(dobString);
+              ageController.text = calculateAge(dob);
+            } catch (_) {
+              ageController.text = '';
+            }
+          }
+
           _familyRows.add({
             'name': TextEditingController(text: member['Family_Member'] ?? ''),
             'relation': TextEditingController(text: member['Relation'] ?? ''),
-            'age': TextEditingController(text: member['Age']?.toString() ?? ''),
+            'birthdate': birthController,
+            'age': ageController,
             'gender': TextEditingController(text: member['Gender'] ?? ''),
             'civilStatus': TextEditingController(
               text: member['Civil_Status'] ?? '',
@@ -1295,11 +1357,35 @@ class _UpdateRegistrationPageWidgetState
     );
   }
 
+  // ===================== AGE CALCULATOR =====================
+  String calculateAge(DateTime birthDate) {
+    DateTime today = DateTime.now();
+
+    int years = today.year - birthDate.year;
+    int months = today.month - birthDate.month;
+    int days = today.day - birthDate.day;
+
+    if (days < 0) {
+      months--;
+      days += DateTime(birthDate.year, birthDate.month + 1, 0).day;
+    }
+    if (months < 0) {
+      years--;
+      months += 12;
+    }
+
+    if (years > 0) {
+      return "$years";
+    } else {
+      return "$months month${months > 1 ? 's' : ''}";
+    }
+  }
+
+  // ===================== FAMILY MEMBERS TABLE =====================
   Widget _buildFamilyMembersTable() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Table Header (centered)
         Padding(
           padding: const EdgeInsets.only(bottom: 12.0),
           child: Column(
@@ -1318,7 +1404,6 @@ class _UpdateRegistrationPageWidgetState
           ),
         ),
 
-        // Table container
         Center(
           child: Container(
             width: 1560,
@@ -1329,24 +1414,25 @@ class _UpdateRegistrationPageWidgetState
             child: Table(
               border: TableBorder.all(color: Colors.black54, width: 1),
               columnWidths: const {
-                0: FlexColumnWidth(2.2), // Family Members
-                1: FlexColumnWidth(2.2), // Relation
-                2: FlexColumnWidth(1), // Age
-                3: FlexColumnWidth(1), // Gender
-                4: FlexColumnWidth(1.5), // Civil Status
-                5: FlexColumnWidth(1.5), // Educ.
-                6: FlexColumnWidth(2.5), // Occupational Skills
-                7: FlexColumnWidth(2.5), // Remarks
-                8: FlexColumnWidth(1), // Code
-                9: FlexColumnWidth(1), // Actions (new)
+                0: FlexColumnWidth(2.2),
+                1: FlexColumnWidth(2.2),
+                2: FlexColumnWidth(1.6), // DOB
+                3: FlexColumnWidth(1), // Age
+                4: FlexColumnWidth(1),
+                5: FlexColumnWidth(1.5),
+                6: FlexColumnWidth(1.5),
+                7: FlexColumnWidth(2.5),
+                8: FlexColumnWidth(2.5),
+                9: FlexColumnWidth(1),
+                10: FlexColumnWidth(1),
               },
               children: [
-                // Table Header Row
                 TableRow(
                   decoration: BoxDecoration(color: Colors.grey[200]),
                   children: [
                     _buildTableHeader('Family Members'),
                     _buildTableHeader('Relation to Family Head'),
+                    _buildTableHeader('Date of Birth'),
                     _buildTableHeader('Age'),
                     _buildTableHeader('Gender'),
                     _buildTableHeader('Civil Status'),
@@ -1354,50 +1440,40 @@ class _UpdateRegistrationPageWidgetState
                     _buildTableHeader('Occupational Skills'),
                     _buildTableHeader('Remarks'),
                     _buildTableHeader('Code'),
-                    _buildTableHeader('Actions'), // New header for actions
+                    _buildTableHeader('Actions'),
                   ],
                 ),
-                // Dynamic Data Rows
-                for (var row in _familyRows)
+
+                for (int i = 0; i < _familyRows.length; i++)
                   TableRow(
                     children: [
-                      _buildTableTextField(row['name']!),
-                      _buildTableTextField(row['relation']!),
-                      _buildTableTextField(row['age']!),
-                      _buildTableTextField(row['gender']!),
-                      _buildTableTextField(row['civilStatus']!),
-                      _buildTableTextField(row['education']!),
-                      _buildTableTextField(row['skills']!),
-                      _buildTableTextField(row['remarks']!),
-                      _buildTableTextField(row['code']!),
-                      // New cell for remove button
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 4,
-                        ),
-                        child: Center(
-                          child: IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.red),
-                            onPressed: () {
-                              setState(() {
-                                // Dispose controllers to avoid memory leaks
-                                row['name']!.dispose();
-                                row['relation']!.dispose();
-                                row['age']!.dispose();
-                                row['gender']!.dispose();
-                                row['civilStatus']!.dispose();
-                                row['education']!.dispose();
-                                row['skills']!.dispose();
-                                row['remarks']!.dispose();
-                                row['code']!.dispose();
-                                // Remove the row
-                                _familyRows.remove(row);
-                              });
-                            },
-                            tooltip: 'Remove Row',
-                          ),
-                        ),
+                      _buildTableTextField(_familyRows[i]['name']!),
+                      _buildTableTextField(_familyRows[i]['relation']!),
+
+                      _buildDatePickerField(
+                        _familyRows[i]['birthdate']!,
+                        _familyRows[i]['age']!,
+                      ),
+
+                      _buildTableTextField(
+                        _familyRows[i]['age']!,
+                        disabled: true,
+                      ),
+
+                      _buildTableTextField(_familyRows[i]['gender']!),
+                      _buildTableTextField(_familyRows[i]['civilStatus']!),
+                      _buildTableTextField(_familyRows[i]['education']!),
+                      _buildTableTextField(_familyRows[i]['skills']!),
+                      _buildTableTextField(_familyRows[i]['remarks']!),
+                      _buildTableTextField(_familyRows[i]['code']!),
+
+                      IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.red),
+                        onPressed: () {
+                          setState(() {
+                            _familyRows.removeAt(i);
+                          });
+                        },
                       ),
                     ],
                   ),
@@ -1408,14 +1484,10 @@ class _UpdateRegistrationPageWidgetState
 
         const SizedBox(height: 16),
 
-        // Add Row Button
         ElevatedButton.icon(
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF0D743D),
-            padding: const EdgeInsets.symmetric(
-              horizontal: 20.0,
-              vertical: 12.0,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           ),
           icon: const Icon(Icons.add_circle_outline, color: Colors.white),
           label: Text(
@@ -1431,6 +1503,7 @@ class _UpdateRegistrationPageWidgetState
               _familyRows.add({
                 'name': TextEditingController(),
                 'relation': TextEditingController(),
+                'birthdate': TextEditingController(),
                 'age': TextEditingController(),
                 'gender': TextEditingController(),
                 'civilStatus': TextEditingController(),
@@ -1446,26 +1519,29 @@ class _UpdateRegistrationPageWidgetState
     );
   }
 
-  // Helper: Table header cell
+  // ===================== HELPERS =====================
   Widget _buildTableHeader(String label) {
     return Padding(
       padding: const EdgeInsets.all(8.0),
       child: Center(
         child: Text(
           label,
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 18),
           textAlign: TextAlign.center,
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w600, fontSize: 18),
         ),
       ),
     );
   }
 
-  // Helper: Table text field cell
-  Widget _buildTableTextField(TextEditingController controller) {
+  Widget _buildTableTextField(
+    TextEditingController controller, {
+    bool disabled = false,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       child: TextField(
         controller: controller,
+        enabled: !disabled,
         textAlign: TextAlign.center,
         decoration: const InputDecoration(
           border: InputBorder.none,
@@ -1473,6 +1549,46 @@ class _UpdateRegistrationPageWidgetState
           contentPadding: EdgeInsets.symmetric(vertical: 8),
         ),
         style: GoogleFonts.poppins(fontSize: 16),
+      ),
+    );
+  }
+
+  Widget _buildDatePickerField(
+    TextEditingController birthController,
+    TextEditingController ageController,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      child: GestureDetector(
+        onTap: () async {
+          DateTime now = DateTime.now();
+
+          DateTime? pickedDate = await showDatePicker(
+            context: context,
+            initialDate: now,
+            firstDate: DateTime(now.year - 100),
+            lastDate: now,
+          );
+
+          if (pickedDate != null) {
+            birthController.text =
+                "${pickedDate.year}-${pickedDate.month.toString().padLeft(2, '0')}-${pickedDate.day.toString().padLeft(2, '0')}";
+            ageController.text = calculateAge(pickedDate);
+            setState(() {});
+          }
+        },
+        child: AbsorbPointer(
+          child: TextField(
+            controller: birthController,
+            textAlign: TextAlign.center,
+            decoration: const InputDecoration(
+              border: InputBorder.none,
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(vertical: 8),
+            ),
+            style: GoogleFonts.poppins(fontSize: 16),
+          ),
+        ),
       ),
     );
   }

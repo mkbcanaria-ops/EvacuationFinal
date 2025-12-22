@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:evacutaion/WebPages/WebDisplayQr.dart';
+import 'package:evacutaion/WebPages/WebMainDashboard.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -60,6 +61,7 @@ class _WebRegistrationPageWidgetWidgetState
   final double _minScale = 0.2;
   final double _maxScale = 3.0;
   final double _zoomStep = 0.1;
+  double _baseScale = 1.0;
 
   // Controllers
   final TextEditingController _disasterController = TextEditingController();
@@ -87,6 +89,13 @@ class _WebRegistrationPageWidgetWidgetState
   final List<Map<String, TextEditingController>> _familyRows = [];
   File? imageFile;
   Uint8List? imageBytes; // ✅ ADD THIS LINE HERE - for storing image bytes
+  // Add scroll controllers and pointer tracking for horizontal + vertical scrolling
+  final ScrollController _horizontalController = ScrollController();
+  final ScrollController _verticalController = ScrollController();
+  bool _isMousePanning = false;
+  int? _activePointer;
+  final double _contentWidth = 1560.0; // width of the large form content
+  bool _didCenterOnce = false;
 
   // Civil Status
   bool _single = false;
@@ -123,6 +132,7 @@ class _WebRegistrationPageWidgetWidgetState
       _familyRows.add({
         'name': TextEditingController(),
         'relation': TextEditingController(),
+        'birthdate': TextEditingController(), // ✅ NEW DOB CONTROLLER
         'age': TextEditingController(),
         'gender': TextEditingController(),
         'civilStatus': TextEditingController(),
@@ -137,69 +147,64 @@ class _WebRegistrationPageWidgetWidgetState
   void _zoomIn() {
     setState(() {
       _currentScale = (_currentScale + _zoomStep).clamp(_minScale, _maxScale);
+      _didCenterOnce = false; // recenter after zoom changes
     });
   }
 
   void _zoomOut() {
     setState(() {
       _currentScale = (_currentScale - _zoomStep).clamp(_minScale, _maxScale);
+      _didCenterOnce = false;
     });
   }
 
   void _resetZoom() {
     setState(() {
-      _currentScale = 0.6; // Updated reset to match new default
+      _currentScale = 0.6;
+      _didCenterOnce = false;
     });
   }
 
   Future<void> _registerSave() async {
     final supabase = Supabase.instance.client;
 
-    // ✅ Get values from controllers
     final disasterType = _disasterController.text.trim();
     final date = _dateController.text.trim();
     final city = _cityController.text.trim();
     final municipality = _munController.text.trim();
     final barangay = _brgyController.text.trim();
-
     final site = _evacSiteController.text.trim();
 
-    // ✅ Head of Family fields
     final headSurname = _headSurnameController.text.trim();
     final headFirst = _headFirstController.text.trim();
     final headMiddle = _headMiddleController.text.trim();
     final headAge = _headAgeController.text.trim();
     final headSex = _headSexController.text.trim();
 
-    // ✅ Additional Info fields
     final dob = _dobController.text.trim();
     final occupation = _occupationController.text.trim();
     final monthlyIncome = _monthlyIncomeController.text.trim();
 
-    // ✅ Determine selected civil status
     String civilStatus = '';
-    if (_single) {
+    if (_single)
       civilStatus = 'Single';
-    } else if (_married) {
+    else if (_married)
       civilStatus = 'Married';
-    } else if (_widowed) {
+    else if (_widowed)
       civilStatus = 'Widowed';
-    } else if (_civilOtherController.text.trim().isNotEmpty) {
+    else if (_civilOtherController.text.trim().isNotEmpty) {
       civilStatus = _civilOtherController.text.trim();
     }
 
-    // ✅ Beneficiary and IP fields
     final is4Ps = _is4PsBeneficiary;
     final isIP = _isIP;
     final ipType = _ipTypeController.text.trim();
 
-    // ✅ Get current date & time for Date_Registered
     final now = DateTime.now();
     final formattedDateRegistered = DateFormat(
       'MMMM dd, yyyy • hh:mm a',
     ).format(now);
 
-    // ✅ Validation
     if (disasterType.isEmpty || date.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -212,7 +217,7 @@ class _WebRegistrationPageWidgetWidgetState
       return;
     }
 
-    // ✅ Show loading indicator
+    // Loading
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -220,7 +225,6 @@ class _WebRegistrationPageWidgetWidgetState
     );
 
     try {
-      // ✅ Prevent duplicate disaster record
       final existing = await supabase
           .from('Registration_Table')
           .select('Registration_ID')
@@ -240,7 +244,6 @@ class _WebRegistrationPageWidgetWidgetState
         return;
       }
 
-      // ✅ Insert into Registration_Table (placeholder for image)
       final inserted = await supabase
           .from('Registration_Table')
           .insert({
@@ -249,7 +252,6 @@ class _WebRegistrationPageWidgetWidgetState
             'City': city,
             'Municipality': municipality,
             'Barangay': barangay,
-
             'Site': site,
             'Civil_Status': civilStatus,
             'Head_Surname': headSurname,
@@ -271,13 +273,11 @@ class _WebRegistrationPageWidgetWidgetState
       final registrationId = inserted['Registration_ID'];
       final uid = inserted['UID'];
 
-      // ✅ Upload image to Supabase Storage (web-safe)
       String? imageUrl;
       final fileName =
           'head_${uid}_${DateTime.now().millisecondsSinceEpoch}.jpg';
 
       if (imageBytes != null) {
-        // 🟢 For Web: upload from bytes
         await supabase.storage
             .from('headimage')
             .uploadBinary(
@@ -287,7 +287,6 @@ class _WebRegistrationPageWidgetWidgetState
             );
         imageUrl = supabase.storage.from('headimage').getPublicUrl(fileName);
       } else if (imageFile != null) {
-        // 🟢 For Mobile/Desktop: upload file
         await supabase.storage
             .from('headimage')
             .upload(
@@ -305,23 +304,21 @@ class _WebRegistrationPageWidgetWidgetState
             .eq('UID', uid);
       }
 
-      // ✅ Generate QR Code for UID
       final qrPainter = QrPainter(
         data: uid.toString(),
         version: QrVersions.auto,
         gapless: true,
       );
+
       final imageData = await qrPainter.toImageData(300);
       final qrBytes = imageData!.buffer.asUint8List();
       final qrBase64 = base64Encode(qrBytes);
 
-      // ✅ Update Registration_Table with generated QR code
       await supabase
           .from('Registration_Table')
           .update({'QR_Code': qrBase64})
           .eq('UID', uid);
 
-      // ✅ Insert Family Members
       for (var row in _familyRows) {
         final name = row['name']!.text.trim();
         final relation = row['relation']!.text.trim();
@@ -332,6 +329,7 @@ class _WebRegistrationPageWidgetWidgetState
         final skills = row['skills']!.text.trim();
         final remarks = row['remarks']!.text.trim();
         final code = row['code']!.text.trim();
+        final dobText = row['birthdate']!.text.trim();
 
         if (name.isEmpty &&
             relation.isEmpty &&
@@ -352,10 +350,10 @@ class _WebRegistrationPageWidgetWidgetState
           'Occupational_Skills': skills,
           'Remarks': remarks,
           'Code': code,
+          'Date_of_Birth': dobText,
         });
       }
 
-      // ✅ Fetch full inserted record
       final fullRecord = await supabase
           .from('Registration_Table')
           .select()
@@ -365,18 +363,23 @@ class _WebRegistrationPageWidgetWidgetState
       if (!mounted) return;
       Navigator.of(context).pop();
 
-      // ✅ Navigate to QR code display page
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => WebQRCodeDisplayPage(
-            qrBytes: qrBytes,
-            fullName:
-                '${fullRecord['Head_Firstname']} ${fullRecord['Head_Middlename']} ${fullRecord['Head_Surname']}',
-            details: fullRecord,
+      // 🔥 SHOW MODERN SUCCESS POPUP
+      showSuccessPopup(context);
+
+      // ⏳ Delay then navigate
+      Future.delayed(const Duration(seconds: 2), () {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => WebQRCodeDisplayPage(
+              qrBytes: qrBytes,
+              fullName:
+                  '${fullRecord['Head_Firstname']} ${fullRecord['Head_Middlename']} ${fullRecord['Head_Surname']}',
+              details: fullRecord,
+            ),
           ),
-        ),
-      );
+        );
+      });
     } catch (error) {
       if (!mounted) return;
       Navigator.of(context).pop();
@@ -389,77 +392,265 @@ class _WebRegistrationPageWidgetWidgetState
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        SingleChildScrollView(
-          scrollDirection: Axis.vertical,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Transform.scale(
-              scale: _currentScale,
-              child: Container(
-                width: 1560,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 18,
-                ),
-                color: Colors.white,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildTitleSection(),
-                    const SizedBox(height: 24),
-                    _buildDisasterDateSection(),
-                    const SizedBox(height: 60),
-                    _buildLocationCivilRow(),
-                    const SizedBox(height: 60),
-                    _buildHeadOfFamilyRow(),
-                    const SizedBox(height: 60),
-                    _buildAdditionalInfoRow(),
-                    const SizedBox(height: 50),
-                    _buildBeneficiaryEthnicityRow(),
-                    const SizedBox(height: 60),
-                    _buildFamilyMembersTable(),
-                    const SizedBox(height: 10),
-                    _buildInformationBox(),
-                    const SizedBox(height: 40),
-                    _buildHeadOfFamilyImageSection(),
-                    const SizedBox(height: 40),
-                    _buildDateRegisteredSection(),
-                    const SizedBox(height: 40),
-                    _buildSubmitButton(),
-                  ],
-                ),
-              ),
-            ),
+  void showSuccessPopup(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
           ),
-        ),
-        Positioned(
-          bottom: 20,
-          right: 20,
-          child: Column(
+          contentPadding: const EdgeInsets.fromLTRB(24, 24, 24, 10),
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              _buildZoomButton(Icons.add, Colors.green, _zoomIn, 'Zoom In'),
-              const SizedBox(height: 6),
-              _buildZoomButton(
-                Icons.remove,
-                Colors.orange,
-                _zoomOut,
-                'Zoom Out',
+              // Success Icon with gradient circle
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: [Colors.green.shade400, Colors.green.shade600],
+                  ),
+                ),
+                child: const Icon(Icons.check, color: Colors.white, size: 32),
               ),
-              const SizedBox(height: 6),
-              _buildZoomButton(
-                Icons.refresh,
-                Colors.redAccent,
-                _resetZoom,
-                'Reset Zoom',
+              const SizedBox(height: 16),
+              const Text(
+                "Success!",
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
               ),
             ],
           ),
-        ),
-      ],
+          content: const Text(
+            "Registration has been saved successfully.",
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 15),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: () {
+                Navigator.of(context).pop(); // close popup
+
+                // Navigate to the dashboard
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => WebMainDashboard()),
+                );
+              },
+              child: const Text(
+                "OK",
+                style: TextStyle(fontSize: 16, color: Colors.white),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _horizontalController.dispose();
+    _verticalController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Listener allows mouse-button panning and captures pointer events for desktop
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // After layout, center the scroll position once so the content appears visually centered
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!_didCenterOnce && _horizontalController.hasClients) {
+            final viewportWidth = constraints.maxWidth;
+            final scaledContentW = _contentWidth * _currentScale;
+            final offset = ((scaledContentW - viewportWidth) / 2).clamp(
+              0.0,
+              double.infinity,
+            );
+            if (_horizontalController.position.maxScrollExtent > 0) {
+              final target = offset.clamp(
+                0.0,
+                _horizontalController.position.maxScrollExtent,
+              );
+              _horizontalController.jumpTo(target);
+            }
+            _didCenterOnce = true;
+          }
+        });
+
+        return Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: (event) {
+            if (event.kind == PointerDeviceKind.mouse &&
+                (event.buttons & kSecondaryMouseButton) != 0) {
+              _isMousePanning = true;
+              _activePointer = event.pointer;
+            }
+          },
+          onPointerUp: (event) {
+            if (_activePointer == event.pointer) {
+              _isMousePanning = false;
+              _activePointer = null;
+            }
+          },
+          onPointerCancel: (event) {
+            if (_activePointer == event.pointer) {
+              _isMousePanning = false;
+              _activePointer = null;
+            }
+          },
+          onPointerMove: (event) {
+            // right-mouse drag panning for desktop
+            if (_isMousePanning && _activePointer == event.pointer) {
+              final delta = event.delta;
+              if (_horizontalController.hasClients) {
+                final newX = (_horizontalController.offset - delta.dx).clamp(
+                  0.0,
+                  _horizontalController.position.maxScrollExtent,
+                );
+                _horizontalController.jumpTo(newX);
+              }
+              if (_verticalController.hasClients) {
+                final newY = (_verticalController.offset - delta.dy).clamp(
+                  0.0,
+                  _verticalController.position.maxScrollExtent,
+                );
+                _verticalController.jumpTo(newY);
+              }
+            }
+          },
+          child: GestureDetector(
+            // preserve pinch-to-zoom behavior
+            onScaleStart: (details) {
+              _baseScale = _currentScale;
+            },
+            onScaleUpdate: (details) {
+              setState(() {
+                _currentScale = (_baseScale * details.scale).clamp(
+                  0.2,
+                  _maxScale,
+                );
+                _didCenterOnce = false; // recenter after pinch scale changes
+              });
+            },
+
+            // allow touch horizontal swipe panning
+            onHorizontalDragUpdate: (details) {
+              if (_horizontalController.hasClients) {
+                final dx =
+                    details.delta.dx / (_currentScale == 0 ? 1 : _currentScale);
+                final newOffset = (_horizontalController.offset - dx).clamp(
+                  0.0,
+                  _horizontalController.position.maxScrollExtent,
+                );
+                _horizontalController.jumpTo(newOffset);
+              }
+            },
+
+            child: Stack(
+              children: [
+                // vertical scroll -> horizontal scroll -> scaled content centered
+                SingleChildScrollView(
+                  controller: _verticalController,
+                  scrollDirection: Axis.vertical,
+                  child: SingleChildScrollView(
+                    controller: _horizontalController,
+                    scrollDirection: Axis.horizontal,
+                    // enable horizontal scrolling (touch, wheel, fling)
+                    physics: const ClampingScrollPhysics(),
+                    child: Center(
+                      // Center ensures the content visually sits in the middle when viewport is wider
+                      child: Transform.scale(
+                        scale: _currentScale,
+                        alignment: Alignment.center,
+                        child: Container(
+                          width: _contentWidth,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 18,
+                          ),
+                          color: Colors.white,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildTitleSection(),
+                              const SizedBox(height: 24),
+                              _buildDisasterDateSection(),
+                              const SizedBox(height: 60),
+                              _buildLocationCivilRow(),
+                              const SizedBox(height: 60),
+                              _buildHeadOfFamilyRow(),
+                              const SizedBox(height: 60),
+                              _buildAdditionalInfoRow(),
+                              const SizedBox(height: 50),
+                              _buildBeneficiaryEthnicityRow(),
+                              const SizedBox(height: 60),
+                              _buildFamilyMembersTable(),
+                              const SizedBox(height: 10),
+                              _buildInformationBox(),
+                              const SizedBox(height: 40),
+                              _buildHeadOfFamilyImageSection(),
+                              const SizedBox(height: 40),
+                              _buildDateRegisteredSection(),
+                              const SizedBox(height: 40),
+                              _buildSubmitButton(),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                /// floating zoom buttons (unchanged)
+                Positioned(
+                  bottom: 20,
+                  right: 20,
+                  child: Column(
+                    children: [
+                      _buildZoomButton(
+                        Icons.add,
+                        Colors.green,
+                        _zoomIn,
+                        'Zoom In',
+                      ),
+                      const SizedBox(height: 6),
+                      _buildZoomButton(
+                        Icons.remove,
+                        Colors.orange,
+                        _zoomOut,
+                        'Zoom Out',
+                      ),
+                      const SizedBox(height: 6),
+                      _buildZoomButton(
+                        Icons.refresh,
+                        Colors.redAccent,
+                        _resetZoom,
+                        'Reset Zoom',
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -950,21 +1141,69 @@ class _WebRegistrationPageWidgetWidgetState
   }
 
   Widget _buildHeadOfFamilyRow() {
+    // local inline checkbox widget
+    Widget buildCheckBox(String label, bool value, Function(bool?) onChanged) {
+      return Row(
+        children: [
+          Checkbox(value: value, onChanged: onChanged),
+          Text(label, style: GoogleFonts.poppins(fontSize: 20)),
+        ],
+      );
+    }
+
+    // local inline field builder (for Age)
+    Widget buildInlineField(
+      String label,
+      TextEditingController controller, {
+      double fontSize = 22,
+      double labelFontSize = 22,
+    }) {
+      int age = int.tryParse(controller.text) ?? 0;
+      bool isValidAge = age >= 18;
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.poppins(
+              fontSize: labelFontSize,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          SizedBox(
+            width: 120,
+            child: TextField(
+              controller: controller,
+              keyboardType: TextInputType.number,
+              onChanged: (value) => setState(() {}),
+              decoration: InputDecoration(
+                border: const UnderlineInputBorder(),
+                errorText: isValidAge ? null : "Must be 18+",
+              ),
+              style: GoogleFonts.poppins(
+                fontSize: fontSize,
+                color: isValidAge ? Colors.black : Colors.red,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Left: Name fields
+        // LEFT : HEADER + NAME FIELDS
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Add more padding to move header further to the right
               Padding(
                 padding: const EdgeInsets.only(left: 130.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Header
                     Text(
                       'HEAD OF THE FAMILY',
                       style: GoogleFonts.poppins(
@@ -973,19 +1212,15 @@ class _WebRegistrationPageWidgetWidgetState
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Container(
-                      width: 250, // line width under header
-                      height: 2,
-                      color: Colors.black87,
-                    ),
+                    Container(width: 250, height: 2, color: Colors.black87),
                   ],
                 ),
               ),
               const SizedBox(height: 12),
-              // Row for Surname / First / Middle
+
+              // **NAME ROW**
               Row(
                 children: [
-                  // Surname
                   SizedBox(
                     width: 160,
                     child: TextField(
@@ -998,7 +1233,7 @@ class _WebRegistrationPageWidgetWidgetState
                     ),
                   ),
                   const SizedBox(width: 20),
-                  // First Name
+
                   SizedBox(
                     width: 160,
                     child: TextField(
@@ -1011,7 +1246,7 @@ class _WebRegistrationPageWidgetWidgetState
                     ),
                   ),
                   const SizedBox(width: 20),
-                  // Middle Name
+
                   SizedBox(
                     width: 160,
                     child: TextField(
@@ -1029,24 +1264,23 @@ class _WebRegistrationPageWidgetWidgetState
           ),
         ),
 
-        // Add padding to push Age & Sex further to the right
+        // RIGHT : AGE + SEX
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.only(
-              left: 100.0,
-            ), // adjust this value to move further right
+            padding: const EdgeInsets.only(left: 100.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Age
-                _buildInlineField(
-                  'Age:',
+                // AGE (MUST BE 18+)
+                buildInlineField(
+                  "Age:",
                   _headAgeController,
                   fontSize: 22,
                   labelFontSize: 22,
                 ),
-                const SizedBox(height: 12),
-                // Sex label and choices in a row
+                const SizedBox(height: 16),
+
+                // SEX SELECTION
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
@@ -1058,25 +1292,19 @@ class _WebRegistrationPageWidgetWidgetState
                       ),
                     ),
                     const SizedBox(width: 12),
+
                     // Male
-                    _buildCheckBox('M', _headSexController.text == 'M', (val) {
+                    buildCheckBox('M', _headSexController.text == 'M', (val) {
                       setState(() {
-                        if (val!) {
-                          _headSexController.text = 'M';
-                        } else {
-                          _headSexController.text = '';
-                        }
+                        _headSexController.text = val! ? 'M' : '';
                       });
                     }),
                     const SizedBox(width: 10),
+
                     // Female
-                    _buildCheckBox('F', _headSexController.text == 'F', (val) {
+                    buildCheckBox('F', _headSexController.text == 'F', (val) {
                       setState(() {
-                        if (val!) {
-                          _headSexController.text = 'F';
-                        } else {
-                          _headSexController.text = '';
-                        }
+                        _headSexController.text = val! ? 'F' : '';
                       });
                     }),
                   ],
@@ -1094,7 +1322,7 @@ class _WebRegistrationPageWidgetWidgetState
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Date of Birth
+        // DATE OF BIRTH
         Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -1102,12 +1330,12 @@ class _WebRegistrationPageWidgetWidgetState
               width: 220,
               child: TextField(
                 controller: _dobController,
-                textAlign: TextAlign.center, // center text
+                textAlign: TextAlign.center,
                 readOnly: true,
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   hintText: 'Select Date',
-                  border: const UnderlineInputBorder(),
-                  suffixIcon: const Icon(Icons.calendar_today),
+                  border: UnderlineInputBorder(),
+                  suffixIcon: Icon(Icons.calendar_today),
                 ),
                 style: GoogleFonts.poppins(fontSize: 22),
                 onTap: () async {
@@ -1119,8 +1347,16 @@ class _WebRegistrationPageWidgetWidgetState
                   );
 
                   if (pickedDate != null) {
+                    int age = _calculateAge(pickedDate);
+
+                    if (age < 18) {
+                      _showUnderagePopup();
+                      return; // Prevent updating DOB
+                    }
+
                     String formattedDate =
                         "${_formatMonth(pickedDate.month)}, ${pickedDate.day}, ${pickedDate.year}";
+
                     setState(() {
                       _dobController.text = formattedDate;
                     });
@@ -1141,7 +1377,7 @@ class _WebRegistrationPageWidgetWidgetState
 
         const SizedBox(width: 200),
 
-        // Occupation
+        // OCCUPATION
         Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -1149,7 +1385,7 @@ class _WebRegistrationPageWidgetWidgetState
               width: 220,
               child: TextField(
                 controller: _occupationController,
-                textAlign: TextAlign.center, // center text
+                textAlign: TextAlign.center,
                 decoration: const InputDecoration(
                   hintText: '',
                   border: UnderlineInputBorder(),
@@ -1170,7 +1406,7 @@ class _WebRegistrationPageWidgetWidgetState
 
         const SizedBox(width: 200),
 
-        // Monthly Income
+        // MONTHLY INCOME
         Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -1178,7 +1414,7 @@ class _WebRegistrationPageWidgetWidgetState
               width: 220,
               child: TextField(
                 controller: _monthlyIncomeController,
-                textAlign: TextAlign.center, // center text
+                textAlign: TextAlign.center,
                 decoration: const InputDecoration(
                   hintText: '',
                   border: UnderlineInputBorder(),
@@ -1198,6 +1434,79 @@ class _WebRegistrationPageWidgetWidgetState
           ],
         ),
       ],
+    );
+  }
+
+  /// CALCULATE AGE
+  int _calculateAge(DateTime birthDate) {
+    DateTime today = DateTime.now();
+    int age = today.year - birthDate.year;
+
+    if (today.month < birthDate.month ||
+        (today.month == birthDate.month && today.day < birthDate.day)) {
+      age--;
+    }
+    return age;
+  }
+
+  /// UNDERAGE POPUP
+  void _showUnderagePopup() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.error_outline, size: 60, color: Colors.redAccent),
+                const SizedBox(height: 16),
+                Text(
+                  "Age Restriction",
+                  style: GoogleFonts.poppins(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  "The selected date makes the individual under 18.\nPlease select a valid birthdate (18 years old and above).",
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(fontSize: 16),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 32,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    backgroundColor: Colors.redAccent,
+                  ),
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                  },
+                  child: Text(
+                    "OK",
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -1261,14 +1570,37 @@ class _WebRegistrationPageWidgetWidgetState
       ],
     );
   }
-  // Initialize 5 default rows in initState()
 
-  // ------------- UPDATED WIDGET: FAMILY MEMBERS TABLE (CENTERED) -------------
+  // ---------------- AGE CALCULATOR FUNCTION ----------------
+  String calculateAge(DateTime birthDate) {
+    DateTime today = DateTime.now();
+
+    int years = today.year - birthDate.year;
+    int months = today.month - birthDate.month;
+    int days = today.day - birthDate.day;
+
+    if (days < 0) {
+      months--;
+      days += DateTime(birthDate.year, birthDate.month + 1, 0).day;
+    }
+    if (months < 0) {
+      years--;
+      months += 12;
+    }
+
+    if (years > 0) {
+      return "$years";
+    } else {
+      return "$months month${months > 1 ? 's' : ''}";
+    }
+  }
+
+  // ------------- FAMILY MEMBERS TABLE WIDGET -------------
   Widget _buildFamilyMembersTable() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.center, // ✅ Center the section
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Table Header (centered)
+        // Header
         Padding(
           padding: const EdgeInsets.only(bottom: 12.0),
           child: Column(
@@ -1287,10 +1619,10 @@ class _WebRegistrationPageWidgetWidgetState
           ),
         ),
 
-        // Real full-width table container (centered)
+        // Table
         Center(
           child: Container(
-            width: 1560,
+            width: 1700, // made slightly wider to accommodate delete column
             decoration: BoxDecoration(
               border: Border.all(color: Colors.black87, width: 1.2),
               borderRadius: BorderRadius.circular(6),
@@ -1298,47 +1630,74 @@ class _WebRegistrationPageWidgetWidgetState
             child: Table(
               border: TableBorder.all(color: Colors.black54, width: 1),
               columnWidths: const {
-                0: FlexColumnWidth(2.2), // Family Members
-                1: FlexColumnWidth(2.2), // Relation
-                2: FlexColumnWidth(1), // Age
-                3: FlexColumnWidth(1), // Gender
-                4: FlexColumnWidth(1.5), // Civil Status
-                5: FlexColumnWidth(1.5), // Educ.
-                6: FlexColumnWidth(2.5), // Occupational Skills
-                7: FlexColumnWidth(2.5), // Remarks
-                8: FlexColumnWidth(1.2), // ✅ New: Code (adjusted width to fit)
+                0: FlexColumnWidth(2.2),
+                1: FlexColumnWidth(2.2),
+                2: FlexColumnWidth(2.8),
+                3: FlexColumnWidth(1),
+                4: FlexColumnWidth(1.4),
+                5: FlexColumnWidth(1.5),
+                6: FlexColumnWidth(1.5),
+                7: FlexColumnWidth(2.5),
+                8: FlexColumnWidth(2.5),
+                9: FlexColumnWidth(1.2),
+                10: FlexColumnWidth(1.3), // 🔥 WIDER DELETE COLUMN
               },
               children: [
-                // Table Header Row
+                // Header Row
                 TableRow(
                   decoration: BoxDecoration(color: Colors.grey[200]),
                   children: [
                     _buildTableHeader('Family Members'),
                     _buildTableHeader('Relation to Family Head'),
+                    _buildTableHeader('Date of Birth'),
                     _buildTableHeader('Age'),
                     _buildTableHeader('Gender'),
                     _buildTableHeader('Civil Status'),
                     _buildTableHeader('Educ.'),
                     _buildTableHeader('Occupational Skills'),
                     _buildTableHeader('Remarks'),
-                    _buildTableHeader('Code'), // ✅ New header for Code column
+                    _buildTableHeader('Code'),
+                    _buildTableHeader('Delete'),
                   ],
                 ),
-                // Dynamic Data Rows
-                for (var row in _familyRows)
+
+                // Data Rows WITH DELETE BUTTON
+                for (int index = 0; index < _familyRows.length; index++)
                   TableRow(
                     children: [
-                      _buildTableTextField(row['name']!),
-                      _buildTableTextField(row['relation']!),
-                      _buildTableTextField(row['age']!),
-                      _buildTableTextField(row['gender']!),
-                      _buildTableTextField(row['civilStatus']!),
-                      _buildTableTextField(row['education']!),
-                      _buildTableTextField(row['skills']!),
-                      _buildTableTextField(row['remarks']!),
+                      _buildTableTextField(_familyRows[index]['name']!),
+                      _buildTableTextField(_familyRows[index]['relation']!),
+                      _buildDatePickerField(
+                        _familyRows[index]['birthdate']!,
+                        _familyRows[index]['age']!,
+                      ),
                       _buildTableTextField(
-                        row['code']!,
-                      ), // ✅ New text field for Code
+                        _familyRows[index]['age']!,
+                        disabled: true,
+                      ),
+                      _buildTableTextField(_familyRows[index]['gender']!),
+                      _buildTableTextField(_familyRows[index]['civilStatus']!),
+                      _buildTableTextField(_familyRows[index]['education']!),
+                      _buildTableTextField(_familyRows[index]['skills']!),
+                      _buildTableTextField(_familyRows[index]['remarks']!),
+                      _buildTableTextField(_familyRows[index]['code']!),
+
+                      // DELETE BUTTON
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 4,
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          tooltip: 'Delete this row',
+                          onPressed: () {
+                            setState(() {
+                              _familyRows.removeAt(index);
+                            });
+                          },
+                        ),
+                      ),
                     ],
                   ),
               ],
@@ -1348,14 +1707,11 @@ class _WebRegistrationPageWidgetWidgetState
 
         const SizedBox(height: 16),
 
-        // Add Row Button (centered)
+        // Add Row Button
         ElevatedButton.icon(
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF0D743D), // ✅ Custom green color
-            padding: const EdgeInsets.symmetric(
-              horizontal: 20.0,
-              vertical: 12.0,
-            ),
+            backgroundColor: const Color(0xFF0D743D),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           ),
           icon: const Icon(Icons.add_circle_outline, color: Colors.white),
           label: Text(
@@ -1371,13 +1727,14 @@ class _WebRegistrationPageWidgetWidgetState
               _familyRows.add({
                 'name': TextEditingController(),
                 'relation': TextEditingController(),
+                'birthdate': TextEditingController(),
                 'age': TextEditingController(),
                 'gender': TextEditingController(),
                 'civilStatus': TextEditingController(),
                 'education': TextEditingController(),
                 'skills': TextEditingController(),
                 'remarks': TextEditingController(),
-                'code': TextEditingController(), // ✅ Added for new rows
+                'code': TextEditingController(),
               });
             });
           },
@@ -1386,7 +1743,6 @@ class _WebRegistrationPageWidgetWidgetState
     );
   }
 
-  // Helper: Table header cell
   Widget _buildTableHeader(String label) {
     return Padding(
       padding: const EdgeInsets.all(8.0),
@@ -1400,13 +1756,16 @@ class _WebRegistrationPageWidgetWidgetState
     );
   }
 
-  // Helper: Table text field cell
-  Widget _buildTableTextField(TextEditingController controller) {
+  Widget _buildTableTextField(
+    TextEditingController controller, {
+    bool disabled = false,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       child: TextField(
         controller: controller,
-        textAlign: TextAlign.center, // ✅ Center text
+        enabled: !disabled,
+        textAlign: TextAlign.center,
         decoration: const InputDecoration(
           border: InputBorder.none,
           isDense: true,
@@ -1416,6 +1775,68 @@ class _WebRegistrationPageWidgetWidgetState
       ),
     );
   }
+
+  // -------------------- DATE PICKER FIELD --------------------
+  Widget _buildDatePickerField(
+    TextEditingController birthController,
+    TextEditingController ageController,
+  ) {
+    bool hasSelectedDate = birthController.text.isNotEmpty;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          if (!hasSelectedDate)
+            Text(
+              "Select your birthday",
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          if (!hasSelectedDate) const SizedBox(height: 4),
+
+          GestureDetector(
+            onTap: () async {
+              DateTime now = DateTime.now();
+
+              DateTime? pickedDate = await showDatePicker(
+                context: context,
+                initialDate: now,
+                firstDate: DateTime(now.year - 100),
+                lastDate: now,
+              );
+
+              if (pickedDate != null) {
+                birthController.text =
+                    "${pickedDate.year}-${pickedDate.month.toString().padLeft(2, '0')}-${pickedDate.day.toString().padLeft(2, '0')}";
+
+                ageController.text = calculateAge(pickedDate);
+
+                setState(() {});
+              }
+            },
+            child: AbsorbPointer(
+              child: TextField(
+                controller: birthController,
+                textAlign: TextAlign.center,
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(vertical: 8),
+                ),
+                style: GoogleFonts.poppins(fontSize: 16),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // -------------------- AGE CALCULATOR --------------------
 
   // ------------- UPDATED INFORMATION BOX (A, B, C on first row; D, E on second) -------------
   Widget _buildInformationBox() {
