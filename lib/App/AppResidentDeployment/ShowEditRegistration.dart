@@ -129,6 +129,7 @@ class _ShowRegistrationPageFormWidgetState
       _familyRows.add({
         'name': TextEditingController(),
         'relation': TextEditingController(),
+        'birthdate': TextEditingController(), // ✅ NEW DOB CONTROLLER
         'age': TextEditingController(),
         'gender': TextEditingController(),
         'civilStatus': TextEditingController(),
@@ -163,15 +164,44 @@ class _ShowRegistrationPageFormWidgetState
     });
   }
 
+  String calculateAge(DateTime birthDate) {
+    final today = DateTime.now();
+
+    int years = today.year - birthDate.year;
+    int months = today.month - birthDate.month;
+    int days = today.day - birthDate.day;
+
+    // Adjust if day difference is negative
+    if (days < 0) {
+      months--;
+      final prevMonth = DateTime(today.year, today.month, 0).day;
+      days += prevMonth;
+    }
+
+    if (months < 0) {
+      years--;
+      months += 12;
+    }
+
+    if (years >= 1) {
+      return "$years";
+    }
+
+    // Otherwise → return months for babies
+    return "$months month${months == 1 ? '' : 's'}";
+  }
+
   Future<void> _updateRegisterSave() async {
     try {
       final supabase = Supabase.instance.client;
 
-      print('🧩 Saving registration update...');
-      print('🧩 Date of Occurrence: ${_dateController.text}');
-      print('🧩 Selected Evacuation Site: ${_evacSiteController.text}');
+      debugPrint('🧩 Updating registration...');
+      debugPrint('🧩 Date of Occurrence: ${_dateController.text}');
+      debugPrint('🧩 Selected Evacuation Site: ${_evacSiteController.text}');
 
-      // Step 1: Fetch existing image
+      // --------------------------------------------------
+      // STEP 1: FETCH EXISTING IMAGE
+      // --------------------------------------------------
       final existingRecord = await supabase
           .from('Registration_Table')
           .select('Head_Image')
@@ -181,11 +211,13 @@ class _ShowRegistrationPageFormWidgetState
       String? oldImagePath = existingRecord?['Head_Image'];
       String? newImagePath;
 
-      // Step 2: Upload new image if selected
-      if (_headImageFile != null) {
+      // --------------------------------------------------
+      // STEP 2: UPLOAD NEW IMAGE (IF ANY)
+      // --------------------------------------------------
+      if (_headImageBytes != null) {
         final bucket = supabase.storage.from('headimage');
 
-        // Delete old image
+        // Delete old image safely
         if (oldImagePath != null && oldImagePath.isNotEmpty) {
           try {
             await bucket.remove([oldImagePath]);
@@ -195,12 +227,12 @@ class _ShowRegistrationPageFormWidgetState
           }
         }
 
-        // Upload new image
         final fileName =
             '${widget.uid}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        await bucket.upload(
+
+        await bucket.uploadBinary(
           fileName,
-          _headImageFile!,
+          _headImageBytes!,
           fileOptions: const FileOptions(upsert: false),
         );
 
@@ -208,7 +240,9 @@ class _ShowRegistrationPageFormWidgetState
         debugPrint('✅ New image uploaded: $newImagePath');
       }
 
-      // Step 3: Prepare registration data
+      // --------------------------------------------------
+      // STEP 3: UPDATE REGISTRATION TABLE
+      // --------------------------------------------------
       final updateData = {
         'Head_Firstname': _headFirstController.text,
         'Head_Middlename': _headMiddleController.text,
@@ -223,7 +257,7 @@ class _ShowRegistrationPageFormWidgetState
         'City': _cityController.text,
         'Municipality': _munController.text,
         'Barangay': _brgyController.text,
-        'Site': _evacSiteController.text, // ✅ Selected site
+        'Site': _evacSiteController.text,
         'Civil_Status': _single
             ? 'Single'
             : _married
@@ -237,13 +271,14 @@ class _ShowRegistrationPageFormWidgetState
         if (newImagePath != null) 'Head_Image': newImagePath,
       };
 
-      // Step 4: Update Registration_Table
       await supabase
           .from('Registration_Table')
           .update(updateData)
           .eq('UID', widget.uid);
 
-      // Step 5: Refresh family members
+      // --------------------------------------------------
+      // STEP 4: GET REGISTRATION ID
+      // --------------------------------------------------
       final registrationData = await supabase
           .from('Registration_Table')
           .select('Registration_ID')
@@ -251,29 +286,61 @@ class _ShowRegistrationPageFormWidgetState
           .maybeSingle();
 
       if (registrationData == null) {
-        throw Exception("Registration not found for UID: ${widget.uid}");
+        throw Exception('Registration not found for UID: ${widget.uid}');
       }
 
-      final registrationId = registrationData['Registration_ID'];
+      final String registrationId = registrationData['Registration_ID'];
 
-      // Delete old family members
+      // --------------------------------------------------
+      // STEP 5: REFRESH FAMILY MEMBERS
+      // --------------------------------------------------
       await supabase.from('Family_Members').delete().eq('UID', widget.uid);
 
-      // Insert updated family members
       final List<Map<String, dynamic>> newFamilyMembers = [];
+
       for (var row in _familyRows) {
+        // Skip fully empty rows
+        final hasData = [
+          row['name']?.text,
+          row['relation']?.text,
+          row['birthdate']?.text,
+          row['gender']?.text,
+          row['civilStatus']?.text,
+          row['education']?.text,
+          row['skills']?.text,
+          row['remarks']?.text,
+          row['code']?.text,
+        ].any((v) => v != null && v.trim().isNotEmpty);
+
+        if (!hasData) continue;
+
+        // Calculate age using birthdate if possible
+        String ageValue = '';
+        if (row['birthdate']?.text != null &&
+            row['birthdate']!.text.isNotEmpty) {
+          try {
+            final birthDate = DateTime.parse(row['birthdate']!.text);
+            ageValue = calculateAge(birthDate);
+          } catch (_) {
+            ageValue = row['age']?.text ?? '';
+          }
+        } else {
+          ageValue = row['age']?.text ?? '';
+        }
+
         newFamilyMembers.add({
           'UID': widget.uid,
           'Registration_ID': registrationId,
           'Family_Member': row['name']?.text ?? '',
           'Relation': row['relation']?.text ?? '',
-          'Age': int.tryParse(row['age']?.text ?? '') ?? 0,
+          'Age': ageValue,
           'Gender': row['gender']?.text ?? '',
           'Civil_Status': row['civilStatus']?.text ?? '',
           'Education': row['education']?.text ?? '',
           'Occupational_Skills': row['skills']?.text ?? '',
           'Remarks': row['remarks']?.text ?? '',
           'Code': row['code']?.text ?? '',
+          'Date_of_Birth': row['birthdate']?.text ?? '',
         });
       }
 
@@ -281,53 +348,96 @@ class _ShowRegistrationPageFormWidgetState
         await supabase.from('Family_Members').insert(newFamilyMembers);
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✅ Registration and photo updated successfully!'),
-        ),
-      );
-
-      // Step 6: Check for sick members and assign helpers
+      // --------------------------------------------------
+      // STEP 6: EVACUATION LOGIC
+      // --------------------------------------------------
       await _checkSickMembersAndAssign(registrationId);
     } catch (e) {
       debugPrint('❌ Error updating registration: $e');
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('❌ Error updating data: $e')));
     }
   }
 
-  // ...existing code...
   Future<void> _checkSickMembersAndAssign(String registrationId) async {
     if (!mounted) return;
     final supabase = Supabase.instance.client;
 
-    // 1️⃣ Find members with a Code (Code not empty)
-    final membersWithCode = _familyRows
+    // Only consider rows with meaningful data
+    final allMembersWithData = _familyRows.where((row) {
+      return [
+        row['name']?.text,
+        row['relation']?.text,
+        row['birthdate']?.text,
+      ].any((f) => f != null && f.trim().isNotEmpty);
+    }).toList();
+
+    // helper: compute age string based on birthdate; returns:
+    // - "<n> month(s)" for < 1 year
+    // - "<n>" (years as string) for >= 1 year
+    String _ageFromDobOrFallback(
+      String dobText,
+      TextEditingController? ageCtrl,
+    ) {
+      if (dobText != null && dobText.trim().isNotEmpty) {
+        try {
+          // we expect YYYY-MM-DD from the date picker; try DateTime.parse first
+          DateTime? bd = DateTime.tryParse(dobText.trim());
+          if (bd == null) {
+            // fallback: try to parse common formatted dates (e.g. "Jan 1, 2020")
+            // if custom formats exist, DateFormat parsing can be added
+            return ageCtrl?.text.trim() != null &&
+                    ageCtrl!.text.trim().isNotEmpty
+                ? ageCtrl.text.trim()
+                : '0';
+          }
+          // calculateAge helper exists in this class and returns:
+          // - "$years" (e.g. "2") for >= 1 year
+          // - "$months month(s)" for < 1 year
+          return calculateAge(bd);
+        } catch (_) {
+          return ageCtrl?.text.trim().isNotEmpty == true
+              ? ageCtrl!.text.trim()
+              : '0';
+        }
+      } else {
+        // no dob: use provided age field if present
+        return ageCtrl?.text.trim().isNotEmpty == true
+            ? ageCtrl!.text.trim()
+            : '0';
+      }
+    }
+
+    final membersWithCode = allMembersWithData
         .where((row) => (row['code']?.text ?? '').isNotEmpty)
         .toList();
 
-    // 2️⃣ Prepare potential helpers (exclude members with Code)
-    final potentialHelpers = _familyRows
+    final potentialHelpers = allMembersWithData
         .where((row) => !membersWithCode.contains(row))
-        .map((row) => row['name']?.text ?? '')
-        .where((name) => name.isNotEmpty)
         .toList();
 
     final now = DateTime.now().toUtc().toIso8601String();
-    final headSite = _evacSiteController.text; // Get head's site once
+    final headSite = _evacSiteController.text;
 
-    // Helper to build head-of-family map for Evacuation tables
+    // Build Head Entry (use DOB when available to compute age)
     Map<String, Object> _buildHeadEntry() {
       final headFullName =
           '${_headSurnameController.text} ${_headFirstController.text} ${_headMiddleController.text}'
               .trim();
+
+      final headAgeValue = _ageFromDobOrFallback(
+        _dobController.text,
+        _headAgeController,
+      );
+
       return <String, Object>{
         'UID': widget.uid,
         'Registration_ID': registrationId,
         'Family_Member': headFullName,
         'Relation': 'Head of Family',
-        'Age': int.tryParse(_headAgeController.text) ?? 0,
+        'Age': headAgeValue,
         'Gender': _headSexController.text,
         'Civil_Status': _single
             ? 'Single'
@@ -351,267 +461,186 @@ class _ShowRegistrationPageFormWidgetState
         'Barangay': _brgyController.text,
         'Site': headSite,
         'Date_Transferred': now,
+        'Date_of_Birth': _dobController.text,
       };
     }
 
-    // Branch: no coded members -> insert everyone into Evacuation_A (including head)
+    // Step 0: Check if anyone is already in Evacuation_A or B
+    final existingEvacResidents = await supabase
+        .from('Evacuation_A')
+        .select('Family_Member')
+        .eq('UID', widget.uid)
+        .then((aRows) async {
+          final bRows = await supabase
+              .from('Evacuation_B')
+              .select('Family_Member')
+              .eq('UID', widget.uid);
+          return [
+            ...aRows.map((e) => e['Family_Member']?.toString() ?? ''),
+            ...bRows.map((e) => e['Family_Member']?.toString() ?? ''),
+          ];
+        });
+
+    final alreadyInEvacuation = <String>[];
+
+    // Members
+    for (var member in allMembersWithData) {
+      final memberName = member['name']?.text ?? '';
+      if (existingEvacResidents.contains(memberName)) {
+        alreadyInEvacuation.add(memberName);
+      }
+    }
+
+    // Head
+    final headFullName =
+        '${_headSurnameController.text} ${_headFirstController.text} ${_headMiddleController.text}'
+            .trim();
+
+    if (existingEvacResidents.contains(headFullName)) {
+      alreadyInEvacuation.add(headFullName);
+    }
+
+    // If already assigned → show modal + return
+    if (alreadyInEvacuation.isNotEmpty) {
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: const [
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      color: Colors.orange,
+                      size: 32,
+                    ),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Already Assigned',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 200),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'The following resident(s) are already in the evacuation list:',
+                          style: TextStyle(fontSize: 16),
+                        ),
+                        const SizedBox(height: 8),
+                        ...alreadyInEvacuation.map(
+                          (name) => Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 2),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.person,
+                                  size: 20,
+                                  color: Colors.grey,
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    name,
+                                    style: const TextStyle(fontSize: 16),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) {
+          Navigator.of(context).pop();
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => const MainDashboard()),
+            (route) => false,
+          );
+        }
+      });
+      return;
+    }
+
+    // NO CODE assigned → everyone goes to Evacuation_A
     if (membersWithCode.isEmpty) {
-      final List<Map<String, Object>> evacAInserts = _familyRows.map((member) {
+      final List<Map<String, Object>> evacAInserts = allMembersWithData.map((
+        member,
+      ) {
+        final ageValue = _ageFromDobOrFallback(
+          member['birthdate']?.text ?? '',
+          member['age'],
+        );
         return <String, Object>{
           'UID': widget.uid,
           'Registration_ID': registrationId,
           'Family_Member': member['name']?.text ?? '',
           'Relation': member['relation']?.text ?? '',
-          'Age': int.tryParse(member['age']?.text ?? '') ?? 0,
+          'Age': ageValue,
           'Gender': member['gender']?.text ?? '',
           'Civil_Status': member['civilStatus']?.text ?? '',
           'Education': member['education']?.text ?? '',
           'Occupational_Skills': member['skills']?.text ?? '',
           'Remarks': member['remarks']?.text ?? '',
           'Code': member['code']?.text ?? '',
-          'Site': headSite, // Add head's site
+          'Date_of_Birth': member['birthdate']?.text ?? '',
+          'Site': headSite,
           'Date_Transferred': now,
         };
       }).toList();
 
-      // Add head entry
       evacAInserts.add(_buildHeadEntry());
 
       try {
         await supabase.from('Evacuation_A').insert(evacAInserts);
-        if (mounted) {
-          await _showInsertSuccessDialog(context, evacAInserts.length, 0);
-        }
       } catch (e) {
-        debugPrint('❌ Error inserting into Evacuation_A: $e');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('❌ Error inserting into Evacuation_A: $e')),
-          );
-        }
+        debugPrint('❌ Error inserting Evacuation_A: $e');
       }
-      return;
-    }
 
-    // Rest of assignment logic for members with codes
-    if (potentialHelpers.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              '⚠️ No available family member to assign as in-charge',
-            ),
-          ),
-        );
-      }
-      return;
-    }
+      if (!mounted) return;
 
-    String? selectedHelper = potentialHelpers.first;
-
-    // 3️⃣ Show dialog to select in-charge
-    await showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Assign In-Charge for Members with Code'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'The following members have a Code:\n${membersWithCode.map((e) => e['name']?.text ?? '').join(', ')}',
-              ),
-              const SizedBox(height: 12),
-              const Text('Select a family member to look after all of them:'),
-              const SizedBox(height: 12),
-              StatefulBuilder(
-                builder: (context, setStateDialog) {
-                  return DropdownButton<String>(
-                    value: selectedHelper,
-                    items: potentialHelpers
-                        .map(
-                          (name) =>
-                              DropdownMenuItem(value: name, child: Text(name)),
-                        )
-                        .toList(),
-                    onChanged: (val) =>
-                        setStateDialog(() => selectedHelper = val),
-                  );
-                },
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                Navigator.pop(dialogContext);
-
-                try {
-                  final List<Map<String, Object>> evacBInserts = [];
-                  final List<Map<String, Object>> evacAInserts = [];
-                  final nowLocal = DateTime.now().toUtc().toIso8601String();
-
-                  // Members with Code -> Evacuation_B (including site)
-                  for (var member in membersWithCode) {
-                    evacBInserts.add(<String, Object>{
-                      'UID': widget.uid,
-                      'Registration_ID': registrationId,
-                      'Family_Member': member['name']?.text ?? '',
-                      'Relation': member['relation']?.text ?? '',
-                      'Age': int.tryParse(member['age']?.text ?? '') ?? 0,
-                      'Gender': member['gender']?.text ?? '',
-                      'Civil_Status': member['civilStatus']?.text ?? '',
-                      'Education': member['education']?.text ?? '',
-                      'Occupational_Skills': member['skills']?.text ?? '',
-                      'Remarks': member['remarks']?.text ?? '',
-                      'Code': member['code']?.text ?? '',
-                      'Site': headSite, // Add head's site
-                      'Date_Transferred': nowLocal,
-                    });
-                  }
-
-                  // Assigned in-charge -> Evacuation_B (including site)
-                  final helperRow = _familyRows.firstWhere(
-                    (row) => row['name']?.text == selectedHelper,
-                    orElse: () => <String, TextEditingController>{},
-                  );
-
-                  if (helperRow.isNotEmpty) {
-                    evacBInserts.add(<String, Object>{
-                      'UID': widget.uid,
-                      'Registration_ID': registrationId,
-                      'Family_Member': selectedHelper ?? '',
-                      'Relation': 'In-Charge',
-                      'Age': int.tryParse(helperRow['age']?.text ?? '') ?? 0,
-                      'Gender': helperRow['gender']?.text ?? '',
-                      'Civil_Status': helperRow['civilStatus']?.text ?? '',
-                      'Education': helperRow['education']?.text ?? '',
-                      'Occupational_Skills': helperRow['skills']?.text ?? '',
-                      'Remarks': 'Assigned to members with Code',
-                      'Code': '',
-                      'Site': headSite, // Add head's site
-                      'Date_Transferred': nowLocal,
-                    });
-                  }
-
-                  // Remaining -> Evacuation_A (including site)
-                  final insertedNames = {
-                    ...membersWithCode.map((m) => m['name']?.text ?? ''),
-                    selectedHelper ?? '',
-                  };
-
-                  final remainingMembers = _familyRows.where(
-                    (row) => !insertedNames.contains(row['name']?.text ?? ''),
-                  );
-
-                  for (var member in remainingMembers) {
-                    evacAInserts.add(<String, Object>{
-                      'UID': widget.uid,
-                      'Registration_ID': registrationId,
-                      'Family_Member': member['name']?.text ?? '',
-                      'Relation': member['relation']?.text ?? '',
-                      'Age': int.tryParse(member['age']?.text ?? '') ?? 0,
-                      'Gender': member['gender']?.text ?? '',
-                      'Civil_Status': member['civilStatus']?.text ?? '',
-                      'Education': member['education']?.text ?? '',
-                      'Occupational_Skills': member['skills']?.text ?? '',
-                      'Remarks': member['remarks']?.text ?? '',
-                      'Code': member['code']?.text ?? '',
-                      'Site': headSite, // Add head's site
-                      'Date_Transferred': nowLocal,
-                    });
-                  }
-
-                  // Add head into Evacuation_A
-                  evacAInserts.add(_buildHeadEntry());
-
-                  // Insert and track success
-                  bool okB = true;
-                  bool okA = true;
-
-                  try {
-                    if (evacBInserts.isNotEmpty) {
-                      await supabase.from('Evacuation_B').insert(evacBInserts);
-                    }
-                  } catch (e) {
-                    okB = false;
-                    debugPrint('❌ Error inserting Evacuation_B: $e');
-                  }
-
-                  try {
-                    if (evacAInserts.isNotEmpty) {
-                      await supabase.from('Evacuation_A').insert(evacAInserts);
-                    }
-                  } catch (e) {
-                    okA = false;
-                    debugPrint('❌ Error inserting Evacuation_A: $e');
-                  }
-
-                  if (mounted) {
-                    if (okA && okB) {
-                      await _showInsertSuccessDialog(
-                        context,
-                        evacAInserts.length,
-                        evacBInserts.length,
-                      );
-                    } else if (okA || okB) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            '⚠ Partial success — Evacuation_A: ${okA ? 'OK' : 'FAILED'}, Evacuation_B: ${okB ? 'OK' : 'FAILED'}',
-                          ),
-                        ),
-                      );
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('❌ Failed to insert into both tables'),
-                        ),
-                      );
-                    }
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    debugPrint('❌ Error processing assignment: $e');
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(SnackBar(content: Text('❌ Error: $e')));
-                  }
-                }
-              },
-              child: const Text('Assign'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Future<void> _showInsertSuccessDialog(
-    BuildContext ctx,
-    int countA,
-    int countB,
-  ) async {
-    if (!ctx.mounted) return;
-
-    await showDialog<void>(
-      context: ctx,
-      barrierDismissible: false,
-      builder: (dCtx) {
-        return Dialog(
+      // Success Dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (dCtx) => Dialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(16),
           ),
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 25),
+            padding: const EdgeInsets.all(20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // ✅ Large green check icon
                 Container(
                   width: 85,
                   height: 85,
@@ -627,10 +656,7 @@ class _ShowRegistrationPageFormWidgetState
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 18),
-
-                // ✅ Title
                 Text(
                   'Resident Successfully Evacuated',
                   textAlign: TextAlign.center,
@@ -639,51 +665,372 @@ class _ShowRegistrationPageFormWidgetState
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-
                 const SizedBox(height: 10),
-
-                // ✅ Subtext
-                Text(
-                  'Evacuation_A: $countA member(s)\nEvacuation_B: $countB member(s)',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.poppins(
-                    fontSize: 15,
-                    color: Colors.black87,
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 250),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: evacAInserts.map((entry) {
+                        final name = entry['Family_Member']?.toString() ?? '';
+                        final relation = entry['Relation']?.toString() ?? '';
+                        final isHead = relation == 'Head of Family';
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Row(
+                            children: [
+                              Icon(
+                                isHead ? Icons.star : Icons.person,
+                                size: 20,
+                                color: isHead ? Colors.amber : Colors.grey,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  '$name ($relation)',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: isHead
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ),
                   ),
                 ),
+              ],
+            ),
+          ),
+        ),
+      );
 
-                const SizedBox(height: 25),
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) {
+          Navigator.of(context).pop();
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => const MainDashboard()),
+            (route) => false,
+          );
+        }
+      });
+      return;
+    }
 
-                // ✅ OK Button — Navigates to MainDashboard
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.of(dCtx).pop(); // Close dialog first
-                      Navigator.pushAndRemoveUntil(
-                        ctx,
-                        MaterialPageRoute(
-                          builder: (_) => const MainDashboard(),
-                        ),
-                        (route) => false, // Remove all previous routes
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      backgroundColor: const Color(0xFF0D743D),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: Text(
-                      'OK',
-                      style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                      ),
+    // ------------------------------------------------------------
+    // STEP 3: CODE MEMBER LOGIC (FULL + FINAL VERSION)
+    // ------------------------------------------------------------
+    String? selectedHelper = potentialHelpers.isNotEmpty
+        ? potentialHelpers.first['name']?.text
+        : null;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 24,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Title
+                Text(
+                  'Assign In-Charge',
+                  style: GoogleFonts.poppins(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Select a family member to oversee all members with a code.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    color: Colors.grey[700],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Members with code
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Members with a Code:',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[800],
                     ),
                   ),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    membersWithCode
+                        .map((e) => e['name']?.text ?? '')
+                        .join(', '),
+                    style: GoogleFonts.poppins(fontSize: 14),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Dropdown selection
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Select In-Charge:',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[800],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                StatefulBuilder(
+                  builder: (context, setDialogState) {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey[300]!),
+                      ),
+                      child: DropdownButton<String>(
+                        value: selectedHelper,
+                        isExpanded: true,
+                        underline: const SizedBox(),
+                        items: potentialHelpers
+                            .map(
+                              (row) => DropdownMenuItem(
+                                value: row['name']?.text ?? '',
+                                child: Text(row['name']?.text ?? ''),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (val) =>
+                            setDialogState(() => selectedHelper = val),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 24),
+                // Actions
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(dialogContext),
+                        style: OutlinedButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          side: BorderSide(color: Colors.grey[400]!),
+                        ),
+                        child: Text(
+                          'Cancel',
+                          style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[800],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          Navigator.pop(dialogContext);
+
+                          try {
+                            final nowLocal = DateTime.now()
+                                .toUtc()
+                                .toIso8601String();
+
+                            List<Map<String, Object>> evacBInserts = [];
+                            List<Map<String, Object>> evacAInserts = [];
+
+                            // 1️⃣ CODED MEMBERS → EVAC B
+                            for (var member in membersWithCode) {
+                              final ageValue = _ageFromDobOrFallback(
+                                member['birthdate']?.text ?? '',
+                                member['age'],
+                              );
+                              evacBInserts.add({
+                                'UID': widget.uid,
+                                'Registration_ID': registrationId,
+                                'Family_Member': member['name']?.text ?? '',
+                                'Relation': member['relation']?.text ?? '',
+                                'Age': ageValue,
+                                'Gender': member['gender']?.text ?? '',
+                                'Civil_Status':
+                                    member['civilStatus']?.text ?? '',
+                                'Education': member['education']?.text ?? '',
+                                'Occupational_Skills':
+                                    member['skills']?.text ?? '',
+                                'Remarks': member['remarks']?.text ?? '',
+                                'Code': member['code']?.text ?? '',
+                                'Date_of_Birth':
+                                    member['birthdate']?.text ?? '',
+                                'Site': 'Santa RHU',
+                                'Date_Transferred': nowLocal,
+                              });
+                            }
+
+                            // 2️⃣ SELECTED HELPER → EVAC B
+                            final helperRow = allMembersWithData.firstWhere(
+                              (row) => row['name']?.text == selectedHelper,
+                            );
+                            final helperAgeValue = _ageFromDobOrFallback(
+                              helperRow['birthdate']?.text ?? '',
+                              helperRow['age'],
+                            );
+                            evacBInserts.add({
+                              'UID': widget.uid,
+                              'Registration_ID': registrationId,
+                              'Family_Member': selectedHelper ?? '',
+                              'Relation': helperRow['relation']?.text ?? '',
+                              'Age': helperAgeValue,
+                              'Gender': helperRow['gender']?.text ?? '',
+                              'Civil_Status':
+                                  helperRow['civilStatus']?.text ?? '',
+                              'Education': helperRow['education']?.text ?? '',
+                              'Occupational_Skills':
+                                  helperRow['skills']?.text ?? '',
+                              'Remarks': helperRow['remarks']?.text ?? '',
+                              'Code': 'Assign',
+                              'Date_of_Birth':
+                                  helperRow['birthdate']?.text ?? '',
+                              'Site': 'Santa RHU',
+                              'Date_Transferred': nowLocal,
+                            });
+
+                            // 3️⃣ ALL OTHER MEMBERS → EVAC A
+                            final usedNames = {
+                              ...membersWithCode.map(
+                                (m) => m['name']?.text ?? '',
+                              ),
+                              selectedHelper ?? '',
+                            };
+
+                            for (var member in allMembersWithData) {
+                              if (!usedNames.contains(
+                                member['name']?.text ?? '',
+                              )) {
+                                final ageValue = _ageFromDobOrFallback(
+                                  member['birthdate']?.text ?? '',
+                                  member['age'],
+                                );
+                                evacAInserts.add({
+                                  'UID': widget.uid,
+                                  'Registration_ID': registrationId,
+                                  'Family_Member': member['name']?.text ?? '',
+                                  'Relation': member['relation']?.text ?? '',
+                                  'Age': ageValue,
+                                  'Gender': member['gender']?.text ?? '',
+                                  'Civil_Status':
+                                      member['civilStatus']?.text ?? '',
+                                  'Education': member['education']?.text ?? '',
+                                  'Occupational_Skills':
+                                      member['skills']?.text ?? '',
+                                  'Remarks': member['remarks']?.text ?? '',
+                                  'Code': member['code']?.text ?? '',
+                                  'Date_of_Birth':
+                                      member['birthdate']?.text ?? '',
+                                  'Site': headSite,
+                                  'Date_Transferred': nowLocal,
+                                });
+                              }
+                            }
+
+                            // 4️⃣ ADD HEAD TO EVAC A
+                            evacAInserts.add(_buildHeadEntry());
+
+                            // 5️⃣ INSERT TO DB
+                            bool okA = true;
+                            bool okB = true;
+
+                            try {
+                              await supabase
+                                  .from('Evacuation_B')
+                                  .insert(evacBInserts);
+                            } catch (e) {
+                              okB = false;
+                              debugPrint('❌ Evacuation_B insert failed: $e');
+                            }
+
+                            try {
+                              await supabase
+                                  .from('Evacuation_A')
+                                  .insert(evacAInserts);
+                            } catch (e) {
+                              okA = false;
+                              debugPrint('❌ Evacuation_A insert failed: $e');
+                            }
+
+                            // SUCCESS POPUP
+                            if (mounted) {
+                              if (okA && okB) {
+                                await _showInsertSuccessDialog(
+                                  context,
+                                  evacAInserts.length,
+                                  evacBInserts.length,
+                                );
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      '⚠ Partial Success → A: ${okA ? "OK" : "FAILED"}, B: ${okB ? "OK" : "FAILED"}',
+                                    ),
+                                  ),
+                                );
+                              }
+                            }
+                          } catch (e) {
+                            debugPrint('❌ Error in Code Assignment: $e');
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('❌ Error: $e')),
+                              );
+                            }
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          backgroundColor: const Color(0xFF0D743D),
+                        ),
+                        child: Text(
+                          'Assign',
+                          style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -691,6 +1038,74 @@ class _ShowRegistrationPageFormWidgetState
         );
       },
     );
+  }
+
+  Future<void> _showInsertSuccessDialog(
+    BuildContext context,
+    int evacACount,
+    int evacBCount,
+  ) async {
+    if (!mounted) return;
+
+    // Build the dialog and display it
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dCtx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 85,
+                height: 85,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFF0D743D).withOpacity(0.15),
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.check_circle,
+                    color: Color(0xFF0D743D),
+                    size: 65,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                'Resident Successfully Evacuated',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.poppins(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 10),
+              // Summary counts
+              Text(
+                'Evacuation_A: $evacACount Residents${evacACount == 1 ? '' : 's'}\n'
+                'Evacuation_B: $evacBCount Residents${evacBCount == 1 ? '' : 's'}',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.poppins(fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    // Auto-close after a short delay and navigate back to dashboard
+    Future.delayed(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      Navigator.of(context).pop(); // close dialog
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const MainDashboard()),
+        (route) => false,
+      );
+    });
   }
 
   Future<void> _fetchRegistrationDetails() async {
@@ -717,25 +1132,22 @@ class _ShowRegistrationPageFormWidgetState
         return;
       }
 
-      // ✅ --- HEAD IMAGE FETCH (supports file path or full URL) ---
+      // ✅ --- HEAD IMAGE FETCH ---
       final headImageValue = registrationResponse['Head_Image'];
       if (headImageValue != null && headImageValue.isNotEmpty) {
         try {
           if (headImageValue.startsWith('http')) {
             _headImageUrl = headImageValue;
-            debugPrint('🖼️ Head image URL (direct): $_headImageUrl');
           } else {
             _headImageUrl = supabase.storage
                 .from('headimage')
                 .getPublicUrl(headImageValue);
-            debugPrint('🖼️ Head image URL (from storage): $_headImageUrl');
           }
         } catch (e) {
           debugPrint('❌ Error fetching head image: $e');
         }
       } else {
         _headImageUrl = null;
-        debugPrint('ℹ️ No head image found for this record.');
       }
 
       // ✅ Populate text controllers
@@ -786,11 +1198,26 @@ class _ShowRegistrationPageFormWidgetState
       // ✅ Populate Family Members
       if (familyResponse != null && familyResponse.isNotEmpty) {
         _familyRows.clear();
+
         for (var member in familyResponse) {
+          final dobString = member['Date_of_Birth'] ?? '';
+          DateTime? dob;
+          String computedAge = '';
+
+          if (dobString.isNotEmpty) {
+            try {
+              dob = DateTime.parse(dobString);
+              computedAge = calculateAge(dob);
+            } catch (e) {
+              debugPrint('⚠️ Invalid DOB format: $dobString');
+            }
+          }
+
           _familyRows.add({
             'name': TextEditingController(text: member['Family_Member'] ?? ''),
             'relation': TextEditingController(text: member['Relation'] ?? ''),
-            'age': TextEditingController(text: member['Age']?.toString() ?? ''),
+            'birthdate': TextEditingController(text: dobString),
+            'age': TextEditingController(text: computedAge), // ✅ AUTO AGE
             'gender': TextEditingController(text: member['Gender'] ?? ''),
             'civilStatus': TextEditingController(
               text: member['Civil_Status'] ?? '',
@@ -800,9 +1227,7 @@ class _ShowRegistrationPageFormWidgetState
               text: member['Occupational_Skills'] ?? '',
             ),
             'remarks': TextEditingController(text: member['Remarks'] ?? ''),
-            'code': TextEditingController(
-              text: member['Code'] ?? '',
-            ), // ✅ new column
+            'code': TextEditingController(text: member['Code'] ?? ''),
           });
         }
       }
@@ -1695,11 +2120,12 @@ class _ShowRegistrationPageFormWidgetState
     );
   }
 
+  // -------------------- FAMILY MEMBERS TABLE --------------------
   Widget _buildFamilyMembersTable() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Table Header (centered)
+        // Header
         Padding(
           padding: const EdgeInsets.only(bottom: 12.0),
           child: Column(
@@ -1713,40 +2139,44 @@ class _ShowRegistrationPageFormWidgetState
                 ),
               ),
               const SizedBox(height: 6),
-              Container(width: 1560, height: 2, color: Colors.black87),
+              Container(width: 400, height: 2, color: Colors.black87),
             ],
           ),
         ),
 
-        // Table container
         Center(
           child: Container(
-            width: 1560,
+            width: 1650,
             decoration: BoxDecoration(
               border: Border.all(color: Colors.black87, width: 1.2),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Table(
               border: TableBorder.all(color: Colors.black54, width: 1),
+
+              // 🔥 UPDATED WIDTHS — DELETE COLUMN WIDER
               columnWidths: const {
-                0: FlexColumnWidth(2.2), // Family Members
+                0: FlexColumnWidth(2.2), // Name
                 1: FlexColumnWidth(2.2), // Relation
-                2: FlexColumnWidth(1), // Age
-                3: FlexColumnWidth(1), // Gender
-                4: FlexColumnWidth(1.5), // Civil Status
-                5: FlexColumnWidth(1.5), // Educ.
-                6: FlexColumnWidth(2.5), // Occupational Skills
-                7: FlexColumnWidth(2.5), // Remarks
-                8: FlexColumnWidth(1), // Code
-                9: FlexColumnWidth(1), // Actions (new)
+                2: FlexColumnWidth(2.8), // DOB
+                3: FlexColumnWidth(1), // Age
+                4: FlexColumnWidth(1.4), // Gender
+                5: FlexColumnWidth(1.5), // Civil Status
+                6: FlexColumnWidth(1.5), // Education
+                7: FlexColumnWidth(2.5), // Skills
+                8: FlexColumnWidth(2.5), // Remarks
+                9: FlexColumnWidth(1.2), // Code
+                10: FlexColumnWidth(1.3), // 🔥 WIDER DELETE COLUMN
               },
+
               children: [
-                // Table Header Row
+                // Header Row
                 TableRow(
                   decoration: BoxDecoration(color: Colors.grey[200]),
                   children: [
                     _buildTableHeader('Family Members'),
                     _buildTableHeader('Relation to Family Head'),
+                    _buildTableHeader('Date of Birth'),
                     _buildTableHeader('Age'),
                     _buildTableHeader('Gender'),
                     _buildTableHeader('Civil Status'),
@@ -1754,49 +2184,45 @@ class _ShowRegistrationPageFormWidgetState
                     _buildTableHeader('Occupational Skills'),
                     _buildTableHeader('Remarks'),
                     _buildTableHeader('Code'),
-                    _buildTableHeader('Actions'), // New header for actions
+                    _buildTableHeader('Delete'),
                   ],
                 ),
-                // Dynamic Data Rows
-                for (var row in _familyRows)
+
+                // Data Rows
+                for (int i = 0; i < _familyRows.length; i++)
                   TableRow(
                     children: [
-                      _buildTableTextField(row['name']!),
-                      _buildTableTextField(row['relation']!),
-                      _buildTableTextField(row['age']!),
-                      _buildTableTextField(row['gender']!),
-                      _buildTableTextField(row['civilStatus']!),
-                      _buildTableTextField(row['education']!),
-                      _buildTableTextField(row['skills']!),
-                      _buildTableTextField(row['remarks']!),
-                      _buildTableTextField(row['code']!),
-                      // New cell for remove button
+                      _buildTableTextField(_familyRows[i]['name']!),
+                      _buildTableTextField(_familyRows[i]['relation']!),
+                      _buildDatePickerField(
+                        _familyRows[i]['birthdate']!,
+                        _familyRows[i]['age']!,
+                      ),
+                      _buildTableTextField(
+                        _familyRows[i]['age']!,
+                        disabled: true,
+                      ),
+                      _buildTableTextField(_familyRows[i]['gender']!),
+                      _buildTableTextField(_familyRows[i]['civilStatus']!),
+                      _buildTableTextField(_familyRows[i]['education']!),
+                      _buildTableTextField(_familyRows[i]['skills']!),
+                      _buildTableTextField(_familyRows[i]['remarks']!),
+                      _buildTableTextField(_familyRows[i]['code']!),
+
+                      // 🔥 UPDATED DELETE CELL (MORE SPACE)
                       Padding(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 4,
+                          horizontal: 10, // wider
+                          vertical: 8,
                         ),
-                        child: Center(
-                          child: IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.red),
-                            onPressed: () {
-                              setState(() {
-                                // Dispose controllers to avoid memory leaks
-                                row['name']!.dispose();
-                                row['relation']!.dispose();
-                                row['age']!.dispose();
-                                row['gender']!.dispose();
-                                row['civilStatus']!.dispose();
-                                row['education']!.dispose();
-                                row['skills']!.dispose();
-                                row['remarks']!.dispose();
-                                row['code']!.dispose();
-                                // Remove the row
-                                _familyRows.remove(row);
-                              });
-                            },
-                            tooltip: 'Remove Row',
-                          ),
+                        child: IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          tooltip: 'Delete this row',
+                          onPressed: () {
+                            setState(() {
+                              _familyRows.removeAt(i);
+                            });
+                          },
                         ),
                       ),
                     ],
@@ -1812,10 +2238,7 @@ class _ShowRegistrationPageFormWidgetState
         ElevatedButton.icon(
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF0D743D),
-            padding: const EdgeInsets.symmetric(
-              horizontal: 20.0,
-              vertical: 12.0,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           ),
           icon: const Icon(Icons.add_circle_outline, color: Colors.white),
           label: Text(
@@ -1831,6 +2254,7 @@ class _ShowRegistrationPageFormWidgetState
               _familyRows.add({
                 'name': TextEditingController(),
                 'relation': TextEditingController(),
+                'birthdate': TextEditingController(),
                 'age': TextEditingController(),
                 'gender': TextEditingController(),
                 'civilStatus': TextEditingController(),
@@ -1846,7 +2270,7 @@ class _ShowRegistrationPageFormWidgetState
     );
   }
 
-  // Helper: Table header cell
+  // -------------------- HELPERS --------------------
   Widget _buildTableHeader(String label) {
     return Padding(
       padding: const EdgeInsets.all(8.0),
@@ -1860,12 +2284,15 @@ class _ShowRegistrationPageFormWidgetState
     );
   }
 
-  // Helper: Table text field cell
-  Widget _buildTableTextField(TextEditingController controller) {
+  Widget _buildTableTextField(
+    TextEditingController controller, {
+    bool disabled = false,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       child: TextField(
         controller: controller,
+        enabled: !disabled,
         textAlign: TextAlign.center,
         decoration: const InputDecoration(
           border: InputBorder.none,
@@ -1873,6 +2300,68 @@ class _ShowRegistrationPageFormWidgetState
           contentPadding: EdgeInsets.symmetric(vertical: 8),
         ),
         style: GoogleFonts.poppins(fontSize: 16),
+      ),
+    );
+  }
+
+  // -------------------- DATE PICKER FIELD --------------------
+  Widget _buildDatePickerField(
+    TextEditingController birthController,
+    TextEditingController ageController,
+  ) {
+    bool hasSelectedDate = birthController.text.isNotEmpty;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // SHOW LABEL ONLY WHEN NO DATE SELECTED
+          if (!hasSelectedDate)
+            Text(
+              "Select your birthday",
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+
+          if (!hasSelectedDate) const SizedBox(height: 4),
+
+          GestureDetector(
+            onTap: () async {
+              DateTime now = DateTime.now();
+
+              DateTime? pickedDate = await showDatePicker(
+                context: context,
+                initialDate: now,
+                firstDate: DateTime(now.year - 100),
+                lastDate: now,
+              );
+
+              if (pickedDate != null) {
+                birthController.text =
+                    "${pickedDate.year}-${pickedDate.month.toString().padLeft(2, '0')}-${pickedDate.day.toString().padLeft(2, '0')}";
+
+                ageController.text = calculateAge(pickedDate);
+
+                setState(() {});
+              }
+            },
+            child: AbsorbPointer(
+              child: TextField(
+                controller: birthController,
+                textAlign: TextAlign.center,
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(vertical: 8),
+                ),
+                style: GoogleFonts.poppins(fontSize: 16),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2035,9 +2524,10 @@ class _ShowRegistrationPageFormWidgetState
                     source: ImageSource.gallery,
                   );
                   if (picked != null) {
+                    final bytes = await picked.readAsBytes();
                     setState(() {
                       _headImageFile = File(picked.path);
-                      _headImageBytes = null;
+                      _headImageBytes = bytes;
                       _headImageUrl = null;
                     });
                   }
@@ -2102,9 +2592,7 @@ class _ShowRegistrationPageFormWidgetState
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(20),
-                    child: _headImageFile != null
-                        ? Image.file(_headImageFile!, fit: BoxFit.cover)
-                        : _headImageBytes != null
+                    child: _headImageBytes != null
                         ? Image.memory(_headImageBytes!, fit: BoxFit.cover)
                         : _headImageUrl != null
                         ? Image.network(

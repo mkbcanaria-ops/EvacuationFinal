@@ -1,29 +1,28 @@
 // ignore_for_file: unnecessary_type_check, unused_local_variable
 
-import 'package:evacutaion/WebPages/sidebar/Discharge%20Function/Discharge_Farmers.dart';
-import 'package:evacutaion/WebPages/sidebar/Discharge%20Function/Discharge_Magsaysay.dart';
-import 'package:evacutaion/WebPages/sidebar/Discharge%20Function/Discharge_RHU.dart';
-import 'package:evacutaion/WebPages/sidebar/Discharge%20Function/Discharge_SantaHignh.dart';
-import 'package:evacutaion/WebPages/sidebar/Discharge%20Function/Discharge_SantaNational.dart';
+import 'package:evacutaion/App/MainDashbaord.dart';
+import 'package:evacutaion/App/Sidebar/AppManageResidents/ManageResidents.dart';
+import 'package:evacutaion/App/Sidebar/AppViewQR/ManageQR.dart';
+import 'package:evacutaion/App/Sidebar/Discharge%20Residents/AppDischargeFarmers.dart';
+import 'package:evacutaion/App/Sidebar/Discharge%20Residents/AppDischargeMagsaysay.dart';
+import 'package:evacutaion/App/Sidebar/Discharge%20Residents/AppDischargeNationalHigh.dart';
+import 'package:evacutaion/App/Sidebar/Discharge%20Residents/AppDischargeRHU.dart';
+import 'package:evacutaion/App/Sidebar/Discharge%20Residents/AppDischargeSantaNational.dart';
+import 'package:evacutaion/App/Sidebar/Request/AppRequest.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
-import 'package:evacutaion/WebPages/WebMainDashboard.dart';
-import 'package:evacutaion/WebPages/sidebar/ViewQRcode/WebManageQr.dart';
-import 'package:evacutaion/WebPages/sidebar/WebManageResidents.dart';
 import 'package:evacutaion/WebPages/sidebar/Report/Report.dart';
 import 'package:evacutaion/WebPages/sidebar/Request/Request.dart';
 
-class WebDischargeDashboardPage extends StatefulWidget {
-  const WebDischargeDashboardPage({super.key});
+class DischargeScanQrPage extends StatefulWidget {
+  const DischargeScanQrPage({super.key});
 
   @override
-  State<WebDischargeDashboardPage> createState() =>
-      _WebDischargeDashboardPageState();
+  State<DischargeScanQrPage> createState() => _DischargeScanQrPageState();
 }
 
-class _WebDischargeDashboardPageState extends State<WebDischargeDashboardPage> {
+class _DischargeScanQrPageState extends State<DischargeScanQrPage> {
   String selectedPage = 'Discharge Residents';
   String? selectedSite;
 
@@ -379,7 +378,7 @@ class _WebDischargeDashboardPageState extends State<WebDischargeDashboardPage> {
                               context,
                               MaterialPageRoute(
                                 builder: (context) =>
-                                    const WebDischargeDashboardPage(),
+                                    const DischargeScanQrPage(),
                               ),
                             );
                           }
@@ -576,7 +575,7 @@ class _WebDischargeDashboardPageState extends State<WebDischargeDashboardPage> {
                               context,
                               MaterialPageRoute(
                                 builder: (context) =>
-                                    const WebDischargeDashboardPage(),
+                                    const DischargeScanQrPage(),
                               ),
                             );
                           }
@@ -633,9 +632,8 @@ class _WebDischargeDashboardPageState extends State<WebDischargeDashboardPage> {
       ),
       drawer: _buildAdminDrawer(),
 
-      /// ✅ CENTERED FLOATING BUTTON
+      // ✅ CENTERED FLOATING BUTTON
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: const Color(0xFF0D743D),
         icon: const Icon(Icons.exit_to_app_rounded, color: Colors.white),
@@ -678,7 +676,7 @@ class _WebDischargeDashboardPageState extends State<WebDischargeDashboardPage> {
                   ),
                   onPressed: () async {
                     Navigator.pop(context);
-                    await _dischargeAllResidents(); // ✅ CALL FUNCTION HERE
+                    await _dischargeAllResidents();
                   },
                   child: Text(
                     "Discharge All",
@@ -694,86 +692,25 @@ class _WebDischargeDashboardPageState extends State<WebDischargeDashboardPage> {
         },
       ),
 
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Wrap(
-          spacing: 24,
-          runSpacing: 24,
-          children: [
-            _buildSiteCard(
-              "Municipal Evacuation Center, Magsaysay",
-              _magsaysayCount,
-              250,
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const WebMagsaysayEvacuationPage(),
-                  ),
-                );
-              },
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: constraints.maxWidth, // take full width
+                ),
+                child: _buildResponsiveGrid(),
+              ),
             ),
-            _buildSiteCard(
-              "Municipal Farmers Covered Court",
-              _farmersCourtCount,
-              180,
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const WebFarmersResidentsPage(),
-                  ),
-                );
-              },
-            ),
-            _buildSiteCard(
-              "Santa RHU",
-              _santaRhuCount,
-              150,
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const WebSantaRHUResidentsPage(),
-                  ),
-                );
-              },
-            ),
-            _buildSiteCard(
-              "Santa High School (Supplemental)",
-              _santaHighSchoolCount,
-              120,
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) =>
-                        const WebSantaHighSchoolResidentsPage(),
-                  ),
-                );
-              },
-            ),
-            _buildSiteCard(
-              "Santa National High School (Supplemental)",
-              _santaNationalHighSchoolCount,
-              110,
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) =>
-                        const WebSantaNationalHighSchoolResidentsPage(),
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
 
-  // ===================== MINIMAL SITE CARD WITH UNIFORM SIZE =====================
+  // ===================== SITE CARD =====================
   Widget _buildSiteCard(
     String site,
     int currentCount,
@@ -787,9 +724,7 @@ class _WebDischargeDashboardPageState extends State<WebDischargeDashboardPage> {
       onTap: onTap ?? () => setState(() => selectedSite = site),
       borderRadius: BorderRadius.circular(16),
       child: Container(
-        width: 400,
-        height: 140,
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(28),
         decoration: BoxDecoration(
           color: isSelected ? const Color(0xFF0D743D) : Colors.white,
           borderRadius: BorderRadius.circular(16),
@@ -827,12 +762,14 @@ class _WebDischargeDashboardPageState extends State<WebDischargeDashboardPage> {
                   const Icon(Icons.check_circle, color: Colors.white),
               ],
             ),
+            const SizedBox(height: 12),
             LinearProgressIndicator(
               value: progress,
               minHeight: 8,
               backgroundColor: Colors.grey[200],
               color: progress >= 1 ? Colors.redAccent : const Color(0xFF0D743D),
             ),
+            const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -857,6 +794,104 @@ class _WebDischargeDashboardPageState extends State<WebDischargeDashboardPage> {
           ],
         ),
       ),
+    );
+  }
+
+  // ===================== RESPONSIVE GRID =====================
+  Widget _buildResponsiveGrid() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final orientation = MediaQuery.of(context).orientation;
+
+    int crossAxisCount;
+    double childAspectRatio;
+
+    if (orientation == Orientation.portrait) {
+      crossAxisCount = 1; // 1 card per row for full width
+      childAspectRatio = screenWidth / 150; // height approx. 150
+    } else {
+      crossAxisCount = screenWidth > 1200
+          ? 4
+          : 2; // multiple cards for landscape
+      childAspectRatio = 16 / 9;
+    }
+
+    final List<Widget> cards = [
+      _buildSiteCard(
+        "Municipal Evacuation Center, Magsaysay",
+        _magsaysayCount,
+        250,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const AppMagsaysayEvacuationPage(),
+            ),
+          );
+        },
+      ),
+      _buildSiteCard(
+        "Municipal Farmers Covered Court",
+        _farmersCourtCount,
+        180,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const AppFarmersResidentsPage(),
+            ),
+          );
+        },
+      ),
+      _buildSiteCard(
+        "Santa RHU",
+        _santaRhuCount,
+        150,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const AppSantaRHUResidentsPage(),
+            ),
+          );
+        },
+      ),
+      _buildSiteCard(
+        "Santa High School (Supplemental)",
+        _santaHighSchoolCount,
+        120,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const AppSantaHighSchoolResidentsPage(),
+            ),
+          );
+        },
+      ),
+      _buildSiteCard(
+        "Santa National High School (Supplemental)",
+        _santaNationalHighSchoolCount,
+        110,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) =>
+                  const AppSantaNationalHighSchoolResidentsPage(),
+            ),
+          );
+        },
+      ),
+    ];
+
+    return GridView.count(
+      crossAxisCount: crossAxisCount,
+      crossAxisSpacing: 24,
+      mainAxisSpacing: 24,
+      childAspectRatio: childAspectRatio,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      children: cards,
     );
   }
 
@@ -925,21 +960,19 @@ class _WebDischargeDashboardPageState extends State<WebDischargeDashboardPage> {
         if (title == 'Dashboard') {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => const WebMainDashboard()),
+            MaterialPageRoute(builder: (context) => const MainDashboard()),
           );
         } else if (title == 'Resident Management') {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => const WebManageResidentsPage(),
+              builder: (context) => const ManageResidentsPage(),
             ),
           );
         } else if (title == 'QR Code Management') {
           Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (context) => const WebDisplayAllQrPage(),
-            ),
+            MaterialPageRoute(builder: (context) => const DisplayAllQrPage()),
           );
         } else if (title == 'Reports') {
           Navigator.push(
@@ -949,7 +982,7 @@ class _WebDischargeDashboardPageState extends State<WebDischargeDashboardPage> {
         } else if (title == 'Requests') {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => const WebRequestsPage()),
+            MaterialPageRoute(builder: (context) => const AppRequestsPage()),
           );
         }
       },

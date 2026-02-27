@@ -6,7 +6,7 @@ import 'package:evacutaion/WebPages/WebMainDashboard.dart';
 import 'package:evacutaion/WebPages/Web_Registration.dart';
 import 'package:evacutaion/WebPages/sidebar/WebArchiveUsers.dart';
 import 'package:evacutaion/WebPages/sidebar/WebEditResident/WebEditResidentDetails.dart';
-import 'package:evacutaion/WebPages/sidebar/WebManageQr.dart';
+import 'package:evacutaion/WebPages/sidebar/ViewQRcode/WebManageQr.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -315,7 +315,7 @@ class _WebManageResidentsPageState extends State<WebManageResidentsPage> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => const WebDischargeScanQrPage(),
+              builder: (context) => const WebDischargeDashboardPage(),
             ),
           );
         } else if (title == 'Reports') {

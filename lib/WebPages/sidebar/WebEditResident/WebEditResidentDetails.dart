@@ -189,7 +189,7 @@ class _ShowRegistrationPageFormWidgetState
       String? newImagePath;
 
       // Step 2: Upload new image if selected
-      if (_headImageFile != null) {
+      if (_headImageBytes != null) {
         final bucket = supabase.storage.from('headimage');
 
         // Delete old image
@@ -205,9 +205,9 @@ class _ShowRegistrationPageFormWidgetState
         // Upload new image
         final fileName =
             '${widget.uid}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        await bucket.upload(
+        await bucket.uploadBinary(
           fileName,
-          _headImageFile!,
+          _headImageBytes!,
           fileOptions: const FileOptions(upsert: false),
         );
 
@@ -1473,11 +1473,42 @@ class _ShowRegistrationPageFormWidgetState
     );
   }
 
+  // ---------------- AGE CALCULATOR FUNCTION ----------------
+  String calculateAge(DateTime birthDate) {
+    final today = DateTime.now();
+
+    int years = today.year - birthDate.year;
+    int months = today.month - birthDate.month;
+    int days = today.day - birthDate.day;
+
+    // Adjust if day difference is negative
+    if (days < 0) {
+      months--;
+      final prevMonth = DateTime(today.year, today.month, 0).day;
+      days += prevMonth;
+    }
+
+    // Adjust if month difference is negative
+    if (months < 0) {
+      years--;
+      months += 12;
+    }
+
+    // If at least 1 year → return ONLY the number
+    if (years >= 1) {
+      return "$years";
+    }
+
+    // Otherwise → return months for babies
+    return "$months month${months == 1 ? '' : 's'}";
+  }
+
+  // -------------------- FAMILY MEMBERS TABLE --------------------
   Widget _buildFamilyMembersTable() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Table Header (centered)
+        // Header
         Padding(
           padding: const EdgeInsets.only(bottom: 12.0),
           child: Column(
@@ -1491,40 +1522,44 @@ class _ShowRegistrationPageFormWidgetState
                 ),
               ),
               const SizedBox(height: 6),
-              Container(width: 1560, height: 2, color: Colors.black87),
+              Container(width: 400, height: 2, color: Colors.black87),
             ],
           ),
         ),
 
-        // Table container
         Center(
           child: Container(
-            width: 1560,
+            width: 1650,
             decoration: BoxDecoration(
               border: Border.all(color: Colors.black87, width: 1.2),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Table(
               border: TableBorder.all(color: Colors.black54, width: 1),
+
+              // 🔥 UPDATED WIDTHS — DELETE COLUMN WIDER
               columnWidths: const {
-                0: FlexColumnWidth(2.2), // Family Members
+                0: FlexColumnWidth(2.2), // Name
                 1: FlexColumnWidth(2.2), // Relation
-                2: FlexColumnWidth(1), // Age
-                3: FlexColumnWidth(1), // Gender
-                4: FlexColumnWidth(1.5), // Civil Status
-                5: FlexColumnWidth(1.5), // Educ.
-                6: FlexColumnWidth(2.5), // Occupational Skills
-                7: FlexColumnWidth(2.5), // Remarks
-                8: FlexColumnWidth(1), // Code
-                9: FlexColumnWidth(1), // Actions (new)
+                2: FlexColumnWidth(2.8), // DOB
+                3: FlexColumnWidth(1), // Age
+                4: FlexColumnWidth(1.4), // Gender
+                5: FlexColumnWidth(1.5), // Civil Status
+                6: FlexColumnWidth(1.5), // Education
+                7: FlexColumnWidth(2.5), // Skills
+                8: FlexColumnWidth(2.5), // Remarks
+                9: FlexColumnWidth(1.2), // Code
+                10: FlexColumnWidth(1.3), // 🔥 WIDER DELETE COLUMN
               },
+
               children: [
-                // Table Header Row
+                // Header Row
                 TableRow(
                   decoration: BoxDecoration(color: Colors.grey[200]),
                   children: [
                     _buildTableHeader('Family Members'),
                     _buildTableHeader('Relation to Family Head'),
+                    _buildTableHeader('Date of Birth'),
                     _buildTableHeader('Age'),
                     _buildTableHeader('Gender'),
                     _buildTableHeader('Civil Status'),
@@ -1532,49 +1567,45 @@ class _ShowRegistrationPageFormWidgetState
                     _buildTableHeader('Occupational Skills'),
                     _buildTableHeader('Remarks'),
                     _buildTableHeader('Code'),
-                    _buildTableHeader('Actions'), // New header for actions
+                    _buildTableHeader('Delete'),
                   ],
                 ),
-                // Dynamic Data Rows
-                for (var row in _familyRows)
+
+                // Data Rows
+                for (int i = 0; i < _familyRows.length; i++)
                   TableRow(
                     children: [
-                      _buildTableTextField(row['name']!),
-                      _buildTableTextField(row['relation']!),
-                      _buildTableTextField(row['age']!),
-                      _buildTableTextField(row['gender']!),
-                      _buildTableTextField(row['civilStatus']!),
-                      _buildTableTextField(row['education']!),
-                      _buildTableTextField(row['skills']!),
-                      _buildTableTextField(row['remarks']!),
-                      _buildTableTextField(row['code']!),
-                      // New cell for remove button
+                      _buildTableTextField(_familyRows[i]['name']!),
+                      _buildTableTextField(_familyRows[i]['relation']!),
+                      _buildDatePickerField(
+                        _familyRows[i]['birthdate']!,
+                        _familyRows[i]['age']!,
+                      ),
+                      _buildTableTextField(
+                        _familyRows[i]['age']!,
+                        disabled: true,
+                      ),
+                      _buildTableTextField(_familyRows[i]['gender']!),
+                      _buildTableTextField(_familyRows[i]['civilStatus']!),
+                      _buildTableTextField(_familyRows[i]['education']!),
+                      _buildTableTextField(_familyRows[i]['skills']!),
+                      _buildTableTextField(_familyRows[i]['remarks']!),
+                      _buildTableTextField(_familyRows[i]['code']!),
+
+                      // 🔥 UPDATED DELETE CELL (MORE SPACE)
                       Padding(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 4,
+                          horizontal: 10, // wider
+                          vertical: 8,
                         ),
-                        child: Center(
-                          child: IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.red),
-                            onPressed: () {
-                              setState(() {
-                                // Dispose controllers to avoid memory leaks
-                                row['name']!.dispose();
-                                row['relation']!.dispose();
-                                row['age']!.dispose();
-                                row['gender']!.dispose();
-                                row['civilStatus']!.dispose();
-                                row['education']!.dispose();
-                                row['skills']!.dispose();
-                                row['remarks']!.dispose();
-                                row['code']!.dispose();
-                                // Remove the row
-                                _familyRows.remove(row);
-                              });
-                            },
-                            tooltip: 'Remove Row',
-                          ),
+                        child: IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          tooltip: 'Delete this row',
+                          onPressed: () {
+                            setState(() {
+                              _familyRows.removeAt(i);
+                            });
+                          },
                         ),
                       ),
                     ],
@@ -1590,10 +1621,7 @@ class _ShowRegistrationPageFormWidgetState
         ElevatedButton.icon(
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF0D743D),
-            padding: const EdgeInsets.symmetric(
-              horizontal: 20.0,
-              vertical: 12.0,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           ),
           icon: const Icon(Icons.add_circle_outline, color: Colors.white),
           label: Text(
@@ -1609,6 +1637,7 @@ class _ShowRegistrationPageFormWidgetState
               _familyRows.add({
                 'name': TextEditingController(),
                 'relation': TextEditingController(),
+                'birthdate': TextEditingController(),
                 'age': TextEditingController(),
                 'gender': TextEditingController(),
                 'civilStatus': TextEditingController(),
@@ -1624,7 +1653,7 @@ class _ShowRegistrationPageFormWidgetState
     );
   }
 
-  // Helper: Table header cell
+  // -------------------- HELPERS --------------------
   Widget _buildTableHeader(String label) {
     return Padding(
       padding: const EdgeInsets.all(8.0),
@@ -1638,12 +1667,15 @@ class _ShowRegistrationPageFormWidgetState
     );
   }
 
-  // Helper: Table text field cell
-  Widget _buildTableTextField(TextEditingController controller) {
+  Widget _buildTableTextField(
+    TextEditingController controller, {
+    bool disabled = false,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       child: TextField(
         controller: controller,
+        enabled: !disabled,
         textAlign: TextAlign.center,
         decoration: const InputDecoration(
           border: InputBorder.none,
@@ -1651,6 +1683,68 @@ class _ShowRegistrationPageFormWidgetState
           contentPadding: EdgeInsets.symmetric(vertical: 8),
         ),
         style: GoogleFonts.poppins(fontSize: 16),
+      ),
+    );
+  }
+
+  // -------------------- DATE PICKER FIELD --------------------
+  Widget _buildDatePickerField(
+    TextEditingController birthController,
+    TextEditingController ageController,
+  ) {
+    bool hasSelectedDate = birthController.text.isNotEmpty;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // SHOW LABEL ONLY WHEN NO DATE SELECTED
+          if (!hasSelectedDate)
+            Text(
+              "Select your birthday",
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+
+          if (!hasSelectedDate) const SizedBox(height: 4),
+
+          GestureDetector(
+            onTap: () async {
+              DateTime now = DateTime.now();
+
+              DateTime? pickedDate = await showDatePicker(
+                context: context,
+                initialDate: now,
+                firstDate: DateTime(now.year - 100),
+                lastDate: now,
+              );
+
+              if (pickedDate != null) {
+                birthController.text =
+                    "${pickedDate.year}-${pickedDate.month.toString().padLeft(2, '0')}-${pickedDate.day.toString().padLeft(2, '0')}";
+
+                ageController.text = calculateAge(pickedDate);
+
+                setState(() {});
+              }
+            },
+            child: AbsorbPointer(
+              child: TextField(
+                controller: birthController,
+                textAlign: TextAlign.center,
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(vertical: 8),
+                ),
+                style: GoogleFonts.poppins(fontSize: 16),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1813,9 +1907,10 @@ class _ShowRegistrationPageFormWidgetState
                     source: ImageSource.gallery,
                   );
                   if (picked != null) {
+                    final bytes = await picked.readAsBytes();
                     setState(() {
                       _headImageFile = File(picked.path);
-                      _headImageBytes = null;
+                      _headImageBytes = bytes;
                       _headImageUrl = null;
                     });
                   }
@@ -1880,9 +1975,7 @@ class _ShowRegistrationPageFormWidgetState
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(20),
-                    child: _headImageFile != null
-                        ? Image.file(_headImageFile!, fit: BoxFit.cover)
-                        : _headImageBytes != null
+                    child: _headImageBytes != null
                         ? Image.memory(_headImageBytes!, fit: BoxFit.cover)
                         : _headImageUrl != null
                         ? Image.network(

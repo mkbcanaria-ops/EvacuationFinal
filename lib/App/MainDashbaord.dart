@@ -1,10 +1,11 @@
 // ignore_for_file: unnecessary_type_check
 
-import 'package:evacutaion/App/Discharge%20Residents/DischargeResidentScanner.dart';
-import 'package:evacutaion/App/Qr_Scanner.dart';
+import 'package:evacutaion/App/Sidebar/Discharge%20Residents/DischargeResidentScanner.dart';
+import 'package:evacutaion/App/AppResidentDeployment/Qr_Scanner.dart';
 import 'package:evacutaion/App/RegistrationPage.dart';
-import 'package:evacutaion/App/Sidebar/ManageQR.dart';
-import 'package:evacutaion/App/Sidebar/ManageResidents.dart';
+import 'package:evacutaion/App/Sidebar/AppViewQR/ManageQR.dart';
+import 'package:evacutaion/App/Sidebar/AppManageResidents/ManageResidents.dart';
+import 'package:evacutaion/App/Sidebar/Request/AppRequest.dart';
 import 'package:evacutaion/WebPages/sidebar/Report/Report.dart';
 import 'package:evacutaion/WebPages/sidebar/Request/Request.dart';
 import 'package:flutter/material.dart';
@@ -743,7 +744,7 @@ class _MainDashboardState extends State<MainDashboard> {
         } else if (title == 'Requests') {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => const WebRequestsPage()),
+            MaterialPageRoute(builder: (context) => const AppRequestsPage()),
           );
         }
       },

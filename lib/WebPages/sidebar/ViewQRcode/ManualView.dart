@@ -259,12 +259,6 @@ class _ManualViewQrPageState extends State<ManualViewQrPage> {
           icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.download_rounded, color: Colors.white),
-            onPressed: _downloadPdf,
-          ),
-        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
@@ -272,8 +266,6 @@ class _ManualViewQrPageState extends State<ManualViewQrPage> {
           child: Column(
             children: [
               const SizedBox(height: 60),
-
-              /// QR PREVIEW
               if (qrData.isNotEmpty)
                 Container(
                   padding: const EdgeInsets.all(20),
@@ -340,23 +332,29 @@ class _ManualViewQrPageState extends State<ManualViewQrPage> {
                 icon: const Icon(Icons.print, color: Colors.white),
                 label: Text(
                   'Print ID',
-                  style: GoogleFonts.poppins(fontSize: 17),
+                  style: GoogleFonts.poppins(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.grey[800],
+                  backgroundColor: Colors.black87,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
               ),
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: ElevatedButton(
-                onPressed: () => Navigator.pop(context),
+              child: ElevatedButton.icon(
+                onPressed: _downloadPdf,
+                icon: const Icon(Icons.download, color: Colors.white),
+                label: Text(
+                  'Download',
+                  style: GoogleFonts.poppins(fontSize: 17, color: Colors.white),
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF0D743D),
-                ),
-                child: Text(
-                  'Done',
-                  style: GoogleFonts.poppins(fontSize: 17, color: Colors.white),
                 ),
               ),
             ),

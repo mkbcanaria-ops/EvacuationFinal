@@ -1,13 +1,14 @@
 // ignore_for_file: use_build_context_synchronously, unused_local_variable
 
+import 'package:evacutaion/WebPages/sidebar/Report/web_reports_table_page.dart';
 import 'package:evacutaion/WebPages/sidebar/Request/Request.dart';
 import 'package:evacutaion/WebPages/WebMainDashboard.dart';
 import 'package:evacutaion/WebPages/sidebar/Discharge%20Function/WebDischargeScanner.dart';
-import 'package:evacutaion/WebPages/sidebar/WebManageQr.dart';
+import 'package:evacutaion/WebPages/sidebar/ViewQRcode/WebManageQr.dart';
 import 'package:evacutaion/WebPages/sidebar/WebManageResidents.dart';
+import 'package:excel/excel.dart' as xls; // FIX: Avoid Border conflict
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:excel/excel.dart' as xls; // FIX: Avoid Border conflict
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:universal_html/html.dart' as html;
@@ -79,54 +80,119 @@ class _WebReportsPageState extends State<WebReportsPage> {
   // ----------------------------------------------------------------------
   //                         EXCEL GENERATION
   // ----------------------------------------------------------------------
-
   void _generateExcelReport() {
-    if (_startDate == null || _endDate == null) {
+    final excel = xls.Excel.createExcel();
+    final sheet = excel['Sheet1'];
+
+    // ---------- Column Width ----------
+    try {
+      sheet.setColumnWidth(0, 50); // REGION / PROVINCE / MUNICIPALITY
+      sheet.setColumnWidth(1, 20); // Barangays
+      sheet.setColumnWidth(2, 20); // Families
+      sheet.setColumnWidth(3, 20); // Persons
+      sheet.setColumnWidth(4, 20); // 4Ps Families
+    } catch (_) {}
+
+    // ---------- Top Header ----------
+    sheet.appendRow([xls.TextCellValue('Republic of the Philippines')]);
+    sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0))
+      ..cellStyle = xls.CellStyle(
+        bold: true,
+        horizontalAlign: xls.HorizontalAlign.Left,
+        verticalAlign: xls.VerticalAlign.Center,
+      );
+
+    sheet.appendRow([xls.TextCellValue('Province of Ilocos Sur')]);
+    sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 1))
+      ..cellStyle = xls.CellStyle(
+        bold: true,
+        horizontalAlign: xls.HorizontalAlign.Left,
+        verticalAlign: xls.VerticalAlign.Center,
+      );
+
+    // ---------- HEADER ROW ----------
+    sheet.appendRow([
+      xls.TextCellValue('REGION / PROVINCE / MUNICIPALITY'),
+      xls.TextCellValue('NUMBER OF AFFECTED'),
+      xls.TextCellValue(''),
+      xls.TextCellValue(''),
+      xls.TextCellValue(''),
+    ]);
+
+    // Merge REGION vertically to cover 2 rows (header + sub-columns)
+    sheet.merge(
+      xls.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 2),
+      xls.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 3),
+    );
+    sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 2))
+      ..cellStyle = xls.CellStyle(
+        bold: true,
+        fontSize: 10,
+        horizontalAlign: xls.HorizontalAlign.Center,
+        verticalAlign: xls.VerticalAlign.Center,
+      );
+
+    // Merge NUMBER OF AFFECTED horizontally (columns 1–4, header row)
+    sheet.merge(
+      xls.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 2),
+      xls.CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: 2),
+    );
+    sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 2))
+      ..cellStyle = xls.CellStyle(
+        bold: true,
+        fontSize: 10,
+        horizontalAlign: xls.HorizontalAlign.Center,
+        verticalAlign: xls.VerticalAlign.Center,
+      );
+
+    // ---------- SUB-COLUMNS ROW (row 3) ----------
+    sheet.appendRow([
+      xls.TextCellValue(''), // Column 0 is merged REGION
+      xls.TextCellValue('Barangays'),
+      xls.TextCellValue('Families'),
+      xls.TextCellValue('Persons'),
+      xls.TextCellValue('4Ps Families'),
+    ]);
+
+    // Style sub-columns
+    for (int col = 1; col <= 4; col++) {
+      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: col, rowIndex: 3))
+        ..cellStyle = xls.CellStyle(
+          bold: true,
+          fontSize: 10,
+          horizontalAlign: xls.HorizontalAlign.Center,
+          verticalAlign: xls.VerticalAlign.Center,
+        );
+    }
+
+    // ---------- Export ----------
+    final excelBytes = excel.encode();
+    if (excelBytes == null || excelBytes.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please select both start and end dates."),
-          backgroundColor: Colors.red,
-        ),
+        const SnackBar(content: Text('Failed to generate Excel.')),
       );
       return;
     }
 
-    final excel = xls.Excel.createExcel();
-    final sheet = excel['Sheet1'];
-
-    // Header
-    sheet.appendRow([
-      xls.TextCellValue('Report Title'),
-      xls.TextCellValue('Date Range'),
-      xls.TextCellValue('Total Residents'),
-    ]);
-
-    // Data
-    sheet.appendRow([
-      xls.TextCellValue('Evacuee Population Report'),
-      xls.TextCellValue(
-        "${_startDate!.toString().split(' ')[0]} → ${_endDate!.toString().split(' ')[0]}",
-      ),
-      xls.IntCellValue(350),
-    ]);
-
-    final excelBytes = excel.encode();
-    if (excelBytes == null) return;
-
-    // WEB DOWNLOAD
     if (kIsWeb) {
-      final blob = html.Blob([Uint8List.fromList(excelBytes)]);
+      final blob = html.Blob([
+        Uint8List.fromList(excelBytes),
+      ], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       final url = html.Url.createObjectUrlFromBlob(blob);
 
-      final anchor = html.AnchorElement(href: url)
-        ..setAttribute("download", "Evacuee_Report.xlsx")
+      html.AnchorElement(href: url)
+        ..setAttribute('download', 'Evacuee_Report_Design.xlsx')
         ..click();
 
       html.Url.revokeObjectUrl(url);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Excel generated and download started.')),
+      );
       return;
     }
 
-    debugPrint("Excel generated (mobile). Add FileSaver for mobile use.");
+    debugPrint('Excel generated (mobile). Add FileSaver for mobile use.');
   }
 
   // 🧭 Drawer
@@ -223,7 +289,7 @@ class _WebReportsPageState extends State<WebReportsPage> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => const WebDischargeScanQrPage(),
+              builder: (context) => const WebDischargeDashboardPage(),
             ),
           );
         } else if (title == 'Reports') {
@@ -240,9 +306,6 @@ class _WebReportsPageState extends State<WebReportsPage> {
       },
     );
   }
-  // ----------------------------------------------------------------------
-  //                                UI
-  // ----------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -252,17 +315,16 @@ class _WebReportsPageState extends State<WebReportsPage> {
       drawer: _buildAdminDrawer(),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0D743D),
-        centerTitle: true, // CENTER TITLE
-        iconTheme: const IconThemeData(color: Colors.white), // <-- icons color
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: Colors.white),
         title: Text(
           "Reports",
           style: GoogleFonts.poppins(
             fontWeight: FontWeight.bold,
-            color: Colors.white, // <-- title color
+            color: Colors.white,
           ),
         ),
       ),
-
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 1100),
@@ -300,9 +362,7 @@ class _WebReportsPageState extends State<WebReportsPage> {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-
                       const SizedBox(height: 15),
-
                       isWide
                           ? Row(
                               children: [
@@ -345,17 +405,21 @@ class _WebReportsPageState extends State<WebReportsPage> {
                   child: SizedBox(
                     width: isWide ? 300 : double.infinity,
                     child: ElevatedButton.icon(
-                      onPressed: _generateExcelReport,
-                      icon: const Icon(
-                        Icons.download,
-                        color: Colors.white, // <-- set icon color to white
-                      ),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => WebReportsTablePage(),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.table_chart, color: Colors.white),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF0D743D),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                       label: Text(
-                        "Generate Excel Report",
+                        "Generate Report",
                         style: GoogleFonts.poppins(
                           color: Colors.white,
                           fontSize: 16,
@@ -371,10 +435,6 @@ class _WebReportsPageState extends State<WebReportsPage> {
       ),
     );
   }
-
-  // ----------------------------------------------------------------------
-  //                          DATE FIELD UI
-  // ----------------------------------------------------------------------
 
   Widget _dateField(String label, DateTime? date, VoidCallback onTap) {
     return GestureDetector(

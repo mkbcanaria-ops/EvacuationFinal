@@ -1,11 +1,13 @@
 // ignore_for_file: unnecessary_type_check
 
-import 'package:evacutaion/App/Discharge%20Residents/DischargeResidentScanner.dart';
-import 'package:evacutaion/App/EditResidentDetails.dart';
+import 'package:evacutaion/App/Sidebar/Discharge%20Residents/DischargeResidentScanner.dart';
 import 'package:evacutaion/App/MainDashbaord.dart';
 import 'package:evacutaion/App/RegistrationPage.dart';
+import 'package:evacutaion/App/Sidebar/AppManageResidents/EditResidentDetails.dart';
 import 'package:evacutaion/App/Sidebar/ArchiveResidents.dart';
-import 'package:evacutaion/App/Sidebar/ManageQR.dart';
+import 'package:evacutaion/App/Sidebar/AppViewQR/ManageQR.dart';
+import 'package:evacutaion/App/Sidebar/Request/AppRequest.dart';
+import 'package:evacutaion/WebPages/sidebar/Report/Report.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -220,14 +222,13 @@ class _ManageResidentsPageState extends State<ManageResidentsPage> {
     );
   }
 
-  // 🧭 Admin Drawer
+  // 🧭 Drawer
   Widget _buildAdminDrawer() {
     return Drawer(
       child: SafeArea(
         child: SingleChildScrollView(
           child: Column(
             children: [
-              // Drawer Header
               DrawerHeader(
                 decoration: const BoxDecoration(color: Color(0xFF0D743D)),
                 child: Align(
@@ -235,7 +236,7 @@ class _ManageResidentsPageState extends State<ManageResidentsPage> {
                   child: Text(
                     'Admin Dashboard',
                     style: GoogleFonts.poppins(
-                      fontSize: 20,
+                      fontSize: 22,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                     ),
@@ -244,34 +245,21 @@ class _ManageResidentsPageState extends State<ManageResidentsPage> {
               ),
 
               // Drawer items
+              _buildDrawerItem('Dashboard', Icons.dashboard_outlined),
               _buildDrawerItem(
-                title: 'Dashboard',
-                icon: Icons.dashboard_outlined,
-                onTap: () {
-                  _navigateToPage('Dashboard');
-                },
+                'Resident Management',
+                Icons.people_alt_outlined,
               ),
+              _buildDrawerItem('QR Code Management', Icons.qr_code_2),
               _buildDrawerItem(
-                title: 'Resident Management',
-                icon: Icons.people_alt_outlined,
-                onTap: () {
-                  _navigateToPage('Resident Management');
-                },
+                'Discharge Residents',
+                Icons.exit_to_app_rounded,
               ),
-              _buildDrawerItem(
-                title: 'QR Code Management',
-                icon: Icons.qr_code_2,
-                onTap: () {
-                  _navigateToPage('QR Code Management');
-                },
-              ),
-              _buildDrawerItem(
-                title: 'Discharge Residents',
-                icon: Icons.exit_to_app_rounded,
-                onTap: () {
-                  _navigateToPage('Discharge Residents');
-                },
-              ),
+
+              const Divider(),
+
+              _buildDrawerItem('Reports', Icons.analytics_outlined),
+              _buildDrawerItem('Requests', Icons.pending_actions_outlined),
             ],
           ),
         ),
@@ -279,60 +267,69 @@ class _ManageResidentsPageState extends State<ManageResidentsPage> {
     );
   }
 
-  // 🔹 Drawer Item Widget
-  Widget _buildDrawerItem({
-    required String title,
-    required IconData icon,
-    VoidCallback? onTap,
-  }) {
+  // 🔹 Drawer Item Widget with if-else navigation logic
+  Widget _buildDrawerItem(String title, IconData icon) {
     final bool isSelected = selectedPage == title;
 
-    return Container(
-      color: isSelected ? const Color(0xFFE8F5E9) : Colors.transparent,
-      child: ListTile(
-        leading: Icon(
-          icon,
-          color: isSelected ? const Color(0xFF0D743D) : Colors.black87,
-        ),
-        title: Text(
-          title,
-          style: GoogleFonts.poppins(
-            fontSize: 15,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-            color: isSelected ? const Color(0xFF0D743D) : Colors.black87,
-          ),
-        ),
-        onTap: onTap,
+    return ListTile(
+      leading: Icon(
+        icon,
+        color: isSelected ? const Color(0xFF0D743D) : Colors.black54,
       ),
+      tileColor: isSelected ? const Color(0xFF0D743D).withOpacity(0.1) : null,
+      title: Text(
+        title,
+        style: GoogleFonts.poppins(
+          fontSize: 16,
+          fontWeight: FontWeight.w500,
+          color: isSelected ? const Color(0xFF0D743D) : Colors.black,
+        ),
+      ),
+      onTap: () {
+        setState(() {
+          selectedPage = title;
+        });
+
+        Navigator.pop(context);
+
+        // 🧭 Navigation logic
+        if (title == 'Dashboard') {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const MainDashboard()),
+          );
+        } else if (title == 'Resident Management') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const ManageResidentsPage(),
+            ),
+          );
+        } else if (title == 'QR Code Management') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const DisplayAllQrPage()),
+          );
+        } else if (title == 'Discharge Residents') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const DischargeScanQrPage(),
+            ),
+          );
+        } else if (title == 'Reports') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const WebReportsPage()),
+          );
+        } else if (title == 'Requests') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const AppRequestsPage()),
+          );
+        }
+      },
     );
-  }
-
-  // 🔹 Centralized navigation method
-  void _navigateToPage(String title) {
-    setState(() => selectedPage = title);
-    Navigator.pop(context);
-
-    if (title == 'Dashboard') {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const MainDashboard()),
-      );
-    } else if (title == 'Resident Management') {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const ManageResidentsPage()),
-      );
-    } else if (title == 'QR Code Management') {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const DisplayAllQrPage()),
-      );
-    } else if (title == 'Discharge Residents') {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const DischargeScanQrPage()),
-      );
-    }
   }
 
   @override

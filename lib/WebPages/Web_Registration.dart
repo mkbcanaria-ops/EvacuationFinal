@@ -774,51 +774,6 @@ class _WebRegistrationPageWidgetWidgetState
     );
   }
 
-  Widget _buildInlineField(
-    String label,
-    TextEditingController controller, {
-    bool readOnly = false,
-    double width = 250,
-    double fontSize = 22,
-    double labelFontSize = 22,
-  }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Text(
-          '$label: ',
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600,
-            fontSize: labelFontSize,
-          ),
-        ),
-        SizedBox(
-          width: width,
-          child: Container(
-            decoration: const BoxDecoration(
-              border: Border(
-                bottom: BorderSide(color: Colors.black87, width: 2),
-              ),
-            ),
-            child: TextField(
-              controller: controller,
-              readOnly: readOnly,
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                isDense: true,
-                contentPadding: EdgeInsets.symmetric(
-                  vertical: 8,
-                  horizontal: 4,
-                ),
-              ),
-              style: GoogleFonts.poppins(fontSize: fontSize),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildLocationCivilRow() {
     final List<String> mainEvacuationCenters = [
       "Municipal Evacuation Center, Magsaysay",
@@ -1836,9 +1791,6 @@ class _WebRegistrationPageWidgetWidgetState
     );
   }
 
-  // -------------------- AGE CALCULATOR --------------------
-
-  // ------------- UPDATED INFORMATION BOX (A, B, C on first row; D, E on second) -------------
   Widget _buildInformationBox() {
     return Align(
       alignment: Alignment.topLeft,

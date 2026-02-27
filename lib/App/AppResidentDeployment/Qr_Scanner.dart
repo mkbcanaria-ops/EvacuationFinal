@@ -1,4 +1,4 @@
-import 'package:evacutaion/App/ShowEditRegistration.dart';
+import 'package:evacutaion/App/AppResidentDeployment/ShowEditRegistration.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';

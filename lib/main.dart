@@ -4,6 +4,7 @@ import 'package:evacutaion/ResidentPAges/ResidentDashboard.dart';
 import 'package:evacutaion/WebPages/LoginPage.dart';
 import 'package:evacutaion/WebPages/WLandingPage.dart';
 import 'package:evacutaion/WebPages/WebMainDashboard.dart';
+import 'package:evacutaion/WebPages/sidebar/Report/web_reports_table_page.dart';
 import 'package:flutter/material.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -27,14 +28,14 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      debugShowCheckedModeBanner: false, // Hides debug banner
-      title: 'MSWDO-Santa  eCamp Management System',
+      debugShowCheckedModeBanner: false,
+      title: 'MSWDO-Santa eCamp Management System',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
-        useMaterial3: true, // optional modern design
+        useMaterial3: true,
       ),
 
-      home: const WebMainDashboard(),
+      home: MainDashboard(),
     );
   }
 }

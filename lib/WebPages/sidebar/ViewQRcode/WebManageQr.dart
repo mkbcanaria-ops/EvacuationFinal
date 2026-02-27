@@ -1,20 +1,23 @@
 import 'dart:convert';
-import 'package:evacutaion/App/Discharge%20Residents/DischargeResidentScanner.dart';
-import 'package:evacutaion/App/MainDashbaord.dart';
-import 'package:evacutaion/App/Sidebar/ManageResidents.dart';
+
+import 'package:evacutaion/WebPages/sidebar/ViewQRcode/ManualView.dart';
+import 'package:evacutaion/WebPages/sidebar/Discharge%20Function/WebDischargeScanner.dart';
+import 'package:evacutaion/WebPages/sidebar/Report/Report.dart';
+import 'package:evacutaion/WebPages/sidebar/Request/Request.dart';
+import 'package:evacutaion/WebPages/WebMainDashboard.dart';
+import 'package:evacutaion/WebPages/sidebar/WebManageResidents.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-class DisplayAllQrPage extends StatefulWidget {
-  const DisplayAllQrPage({super.key});
+class WebDisplayAllQrPage extends StatefulWidget {
+  const WebDisplayAllQrPage({super.key});
 
   @override
-  State<DisplayAllQrPage> createState() => _DisplayAllQrPageState();
+  State<WebDisplayAllQrPage> createState() => _WebDisplayAllQrPageState();
 }
 
-class _DisplayAllQrPageState extends State<DisplayAllQrPage> {
+class _WebDisplayAllQrPageState extends State<WebDisplayAllQrPage> {
   final supabase = Supabase.instance.client;
   List<Map<String, dynamic>> _records = [];
   List<Map<String, dynamic>> _filteredRecords = [];
@@ -122,12 +125,13 @@ class _DisplayAllQrPageState extends State<DisplayAllQrPage> {
                     crossAxisCount = 3;
                   }
 
-                  double childAspectRatio = (width / crossAxisCount) / 280;
+                  double childAspectRatio = (width / crossAxisCount) / 330;
 
                   return Padding(
                     padding: const EdgeInsets.all(12.0),
                     child: Column(
                       children: [
+                        // 🔍 Search Bar
                         TextField(
                           controller: _searchController,
                           decoration: InputDecoration(
@@ -169,6 +173,8 @@ class _DisplayAllQrPageState extends State<DisplayAllQrPage> {
                           style: GoogleFonts.poppins(fontSize: 15),
                         ),
                         const SizedBox(height: 16),
+
+                        // 🧩 QR Grid
                         Expanded(
                           child: GridView.builder(
                             itemCount: _filteredRecords.length,
@@ -200,9 +206,7 @@ class _DisplayAllQrPageState extends State<DisplayAllQrPage> {
                                 child: Padding(
                                   padding: const EdgeInsets.all(12.0),
                                   child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      // Use Expanded to avoid cutting QR
                                       Expanded(
                                         child: qrBytes != null
                                             ? Image.memory(
@@ -216,18 +220,19 @@ class _DisplayAllQrPageState extends State<DisplayAllQrPage> {
                                               ),
                                       ),
                                       const SizedBox(height: 12),
-                                      Flexible(
-                                        child: Text(
-                                          fullName,
-                                          textAlign: TextAlign.center,
-                                          overflow: TextOverflow.ellipsis,
-                                          maxLines: 2,
-                                          style: GoogleFonts.poppins(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 16,
-                                          ),
+
+                                      // 🧍‍♂️ Name
+                                      Text(
+                                        fullName,
+                                        textAlign: TextAlign.center,
+                                        overflow: TextOverflow.ellipsis,
+                                        maxLines: 2,
+                                        style: GoogleFonts.poppins(
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 16,
                                         ),
                                       ),
+
                                       const SizedBox(height: 6),
                                       Text(
                                         'Registered: $date',
@@ -235,6 +240,54 @@ class _DisplayAllQrPageState extends State<DisplayAllQrPage> {
                                         style: GoogleFonts.poppins(
                                           fontSize: 13,
                                           color: Colors.grey[700],
+                                        ),
+                                      ),
+
+                                      const SizedBox(height: 12),
+
+                                      // Inside the GridView.builder itemBuilder, replace the ElevatedButton:
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: ElevatedButton(
+                                          onPressed: () {
+                                            // Navigate to ViewQrCodePage and pass the selected record
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (context) => ManualViewQrPage(
+                                                  firstName:
+                                                      record['Head_Firstname'] ??
+                                                      '',
+                                                  middleName:
+                                                      record['Head_Middlename'] ??
+                                                      '',
+                                                  lastName:
+                                                      record['Head_Surname'] ??
+                                                      '',
+                                                  qrData: record['UID'] ?? '',
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: const Color(
+                                              0xFF0D743D,
+                                            ),
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 10,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                          ),
+                                          child: Text(
+                                            "VIEW",
+                                            style: GoogleFonts.poppins(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
                                         ),
                                       ),
                                     ],
@@ -253,14 +306,13 @@ class _DisplayAllQrPageState extends State<DisplayAllQrPage> {
     );
   }
 
-  // 🧭 Admin Drawer
+  // 🧭 Drawer
   Widget _buildAdminDrawer() {
     return Drawer(
       child: SafeArea(
         child: SingleChildScrollView(
           child: Column(
             children: [
-              // Drawer Header
               DrawerHeader(
                 decoration: const BoxDecoration(color: Color(0xFF0D743D)),
                 child: Align(
@@ -268,7 +320,7 @@ class _DisplayAllQrPageState extends State<DisplayAllQrPage> {
                   child: Text(
                     'Admin Dashboard',
                     style: GoogleFonts.poppins(
-                      fontSize: 20,
+                      fontSize: 22,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                     ),
@@ -276,35 +328,21 @@ class _DisplayAllQrPageState extends State<DisplayAllQrPage> {
                 ),
               ),
 
-              // Drawer items
+              _buildDrawerItem('Dashboard', Icons.dashboard_outlined),
               _buildDrawerItem(
-                title: 'Dashboard',
-                icon: Icons.dashboard_outlined,
-                onTap: () {
-                  _navigateToPage('Dashboard');
-                },
+                'Resident Management',
+                Icons.people_alt_outlined,
               ),
+              _buildDrawerItem('QR Code Management', Icons.qr_code_2),
               _buildDrawerItem(
-                title: 'Resident Management',
-                icon: Icons.people_alt_outlined,
-                onTap: () {
-                  _navigateToPage('Resident Management');
-                },
+                'Discharge Residents',
+                Icons.exit_to_app_rounded,
               ),
-              _buildDrawerItem(
-                title: 'QR Code Management',
-                icon: Icons.qr_code_2,
-                onTap: () {
-                  _navigateToPage('QR Code Management');
-                },
-              ),
-              _buildDrawerItem(
-                title: 'Discharge Residents',
-                icon: Icons.exit_to_app_rounded,
-                onTap: () {
-                  _navigateToPage('Discharge Residents');
-                },
-              ),
+
+              const Divider(),
+
+              _buildDrawerItem('Reports', Icons.analytics_outlined),
+              _buildDrawerItem('Requests', Icons.pending_actions_outlined),
             ],
           ),
         ),
@@ -312,59 +350,68 @@ class _DisplayAllQrPageState extends State<DisplayAllQrPage> {
     );
   }
 
-  // 🔹 Drawer Item Widget
-  Widget _buildDrawerItem({
-    required String title,
-    required IconData icon,
-    VoidCallback? onTap,
-  }) {
+  Widget _buildDrawerItem(String title, IconData icon) {
     final bool isSelected = selectedPage == title;
 
-    return Container(
-      color: isSelected ? const Color(0xFFE8F5E9) : Colors.transparent,
-      child: ListTile(
-        leading: Icon(
-          icon,
-          color: isSelected ? const Color(0xFF0D743D) : Colors.black87,
-        ),
-        title: Text(
-          title,
-          style: GoogleFonts.poppins(
-            fontSize: 15,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-            color: isSelected ? const Color(0xFF0D743D) : Colors.black87,
-          ),
-        ),
-        onTap: onTap,
+    return ListTile(
+      leading: Icon(
+        icon,
+        color: isSelected ? const Color(0xFF0D743D) : Colors.black54,
       ),
+      tileColor: isSelected ? const Color(0xFF0D743D).withOpacity(0.1) : null,
+      title: Text(
+        title,
+        style: GoogleFonts.poppins(
+          fontSize: 16,
+          fontWeight: FontWeight.w500,
+          color: isSelected ? const Color(0xFF0D743D) : Colors.black,
+        ),
+      ),
+      onTap: () {
+        setState(() {
+          selectedPage = title;
+        });
+
+        Navigator.pop(context);
+
+        if (title == 'Dashboard') {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const WebMainDashboard()),
+          );
+        } else if (title == 'Resident Management') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const WebManageResidentsPage(),
+            ),
+          );
+        } else if (title == 'QR Code Management') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const WebDisplayAllQrPage(),
+            ),
+          );
+        } else if (title == 'Discharge Residents') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const WebDischargeDashboardPage(),
+            ),
+          );
+        } else if (title == 'Reports') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const WebReportsPage()),
+          );
+        } else if (title == 'Requests') {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const WebRequestsPage()),
+          );
+        }
+      },
     );
-  }
-
-  // 🔹 Centralized navigation method
-  void _navigateToPage(String title) {
-    setState(() => selectedPage = title);
-    Navigator.pop(context);
-
-    if (title == 'Dashboard') {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const MainDashboard()),
-      );
-    } else if (title == 'Resident Management') {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const ManageResidentsPage()),
-      );
-    } else if (title == 'QR Code Management') {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const DisplayAllQrPage()),
-      );
-    } else if (title == 'Discharge Residents') {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const DischargeScanQrPage()),
-      );
-    }
   }
 }

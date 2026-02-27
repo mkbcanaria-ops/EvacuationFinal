@@ -1,23 +1,23 @@
 import 'dart:convert';
-
-import 'package:evacutaion/WebPages/ManualViewQR/ProcessQr.dart';
+import 'package:evacutaion/App/MainDashbaord.dart';
+import 'package:evacutaion/App/Sidebar/AppManageResidents/ManageResidents.dart';
+import 'package:evacutaion/App/Sidebar/AppViewQR/AppManualViewQr.dart';
+import 'package:evacutaion/App/Sidebar/Discharge%20Residents/DischargeResidentScanner.dart';
 import 'package:evacutaion/WebPages/sidebar/Discharge%20Function/WebDischargeScanner.dart';
 import 'package:evacutaion/WebPages/sidebar/Report/Report.dart';
 import 'package:evacutaion/WebPages/sidebar/Request/Request.dart';
-import 'package:evacutaion/WebPages/WebMainDashboard.dart';
-import 'package:evacutaion/WebPages/sidebar/WebManageResidents.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-class WebDisplayAllQrPage extends StatefulWidget {
-  const WebDisplayAllQrPage({super.key});
+class DisplayAllQrPage extends StatefulWidget {
+  const DisplayAllQrPage({super.key});
 
   @override
-  State<WebDisplayAllQrPage> createState() => _WebDisplayAllQrPageState();
+  State<DisplayAllQrPage> createState() => _DisplayAllQrPageState();
 }
 
-class _WebDisplayAllQrPageState extends State<WebDisplayAllQrPage> {
+class _DisplayAllQrPageState extends State<DisplayAllQrPage> {
   final supabase = Supabase.instance.client;
   List<Map<String, dynamic>> _records = [];
   List<Map<String, dynamic>> _filteredRecords = [];
@@ -254,7 +254,7 @@ class _WebDisplayAllQrPageState extends State<WebDisplayAllQrPage> {
                                             Navigator.push(
                                               context,
                                               MaterialPageRoute(
-                                                builder: (context) => ManualViewQrPage(
+                                                builder: (context) => AppManualViewQrPage(
                                                   firstName:
                                                       record['Head_Firstname'] ??
                                                       '',
@@ -328,6 +328,7 @@ class _WebDisplayAllQrPageState extends State<WebDisplayAllQrPage> {
                 ),
               ),
 
+              // Drawer items
               _buildDrawerItem('Dashboard', Icons.dashboard_outlined),
               _buildDrawerItem(
                 'Resident Management',
@@ -350,6 +351,7 @@ class _WebDisplayAllQrPageState extends State<WebDisplayAllQrPage> {
     );
   }
 
+  // 🔹 Drawer Item Widget with if-else navigation logic
   Widget _buildDrawerItem(String title, IconData icon) {
     final bool isSelected = selectedPage == title;
 
@@ -374,30 +376,29 @@ class _WebDisplayAllQrPageState extends State<WebDisplayAllQrPage> {
 
         Navigator.pop(context);
 
+        // 🧭 Navigation logic
         if (title == 'Dashboard') {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => const WebMainDashboard()),
+            MaterialPageRoute(builder: (context) => const MainDashboard()),
           );
         } else if (title == 'Resident Management') {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => const WebManageResidentsPage(),
+              builder: (context) => const ManageResidentsPage(),
             ),
           );
         } else if (title == 'QR Code Management') {
           Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (context) => const WebDisplayAllQrPage(),
-            ),
+            MaterialPageRoute(builder: (context) => const DisplayAllQrPage()),
           );
         } else if (title == 'Discharge Residents') {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => const WebDischargeScanQrPage(),
+              builder: (context) => const DischargeScanQrPage(),
             ),
           );
         } else if (title == 'Reports') {

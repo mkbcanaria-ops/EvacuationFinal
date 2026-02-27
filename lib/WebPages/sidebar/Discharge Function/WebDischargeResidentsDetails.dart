@@ -185,7 +185,7 @@ class _WebDischargeResidentsDetailsPageFormWidgetState
       String? newImagePath;
 
       // Step 2: Upload new image if selected
-      if (_headImageFile != null) {
+      if (_headImageBytes != null) {
         final bucket = supabase.storage.from('headimage');
 
         // Delete old image
@@ -201,9 +201,9 @@ class _WebDischargeResidentsDetailsPageFormWidgetState
         // Upload new image
         final fileName =
             '${widget.uid}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        await bucket.upload(
+        await bucket.uploadBinary(
           fileName,
-          _headImageFile!,
+          _headImageBytes!,
           fileOptions: const FileOptions(upsert: false),
         );
 
@@ -1938,9 +1938,10 @@ class _WebDischargeResidentsDetailsPageFormWidgetState
                     source: ImageSource.gallery,
                   );
                   if (picked != null) {
+                    final bytes = await picked.readAsBytes();
                     setState(() {
                       _headImageFile = File(picked.path);
-                      _headImageBytes = null;
+                      _headImageBytes = bytes;
                       _headImageUrl = null;
                     });
                   }
@@ -2005,9 +2006,7 @@ class _WebDischargeResidentsDetailsPageFormWidgetState
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(20),
-                    child: _headImageFile != null
-                        ? Image.file(_headImageFile!, fit: BoxFit.cover)
-                        : _headImageBytes != null
+                    child: _headImageBytes != null
                         ? Image.memory(_headImageBytes!, fit: BoxFit.cover)
                         : _headImageUrl != null
                         ? Image.network(

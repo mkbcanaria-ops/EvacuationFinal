@@ -188,7 +188,7 @@ class _WebShowRegistrationPageFormWidgetState
       String? newImagePath;
 
       // Step 2: Upload new image if selected
-      if (_headImageFile != null) {
+      if (_headImageBytes != null) {
         final bucket = supabase.storage.from('headimage');
 
         // Delete old image
@@ -201,12 +201,12 @@ class _WebShowRegistrationPageFormWidgetState
           }
         }
 
-        // Upload new image
+        // Upload new image using bytes (compatible with Flutter Web)
         final fileName =
             '${widget.uid}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        await bucket.upload(
+        await bucket.uploadBinary(
           fileName,
-          _headImageFile!,
+          _headImageBytes!,
           fileOptions: const FileOptions(upsert: false),
         );
 
@@ -862,7 +862,7 @@ class _WebShowRegistrationPageFormWidgetState
                                 'Code': member['code']?.text ?? '',
                                 'Date_of_Birth':
                                     member['birthdate']?.text ?? '',
-                                'Site': headSite,
+                                'Site': 'Santa RHU',
                                 'Date_Transferred': nowLocal,
                               });
                             }
@@ -879,7 +879,7 @@ class _WebShowRegistrationPageFormWidgetState
                               'UID': widget.uid,
                               'Registration_ID': registrationId,
                               'Family_Member': selectedHelper ?? '',
-                              'Relation': 'In-Charge',
+                              'Relation': helperRow['relation']?.text ?? '',
                               'Age': helperAgeValue,
                               'Gender': helperRow['gender']?.text ?? '',
                               'Civil_Status':
@@ -887,11 +887,11 @@ class _WebShowRegistrationPageFormWidgetState
                               'Education': helperRow['education']?.text ?? '',
                               'Occupational_Skills':
                                   helperRow['skills']?.text ?? '',
-                              'Remarks': 'Assigned to members with Code',
-                              'Code': '',
+                              'Remarks': helperRow['remarks']?.text ?? '',
+                              'Code': 'Assign',
                               'Date_of_Birth':
                                   helperRow['birthdate']?.text ?? '',
-                              'Site': headSite,
+                              'Site': 'Santa RHU',
                               'Date_Transferred': nowLocal,
                             });
 
@@ -2632,9 +2632,10 @@ class _WebShowRegistrationPageFormWidgetState
                     source: ImageSource.gallery,
                   );
                   if (picked != null) {
+                    final bytes = await picked.readAsBytes();
                     setState(() {
                       _headImageFile = File(picked.path);
-                      _headImageBytes = null;
+                      _headImageBytes = bytes;
                       _headImageUrl = null;
                     });
                   }
@@ -2699,9 +2700,7 @@ class _WebShowRegistrationPageFormWidgetState
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(20),
-                    child: _headImageFile != null
-                        ? Image.file(_headImageFile!, fit: BoxFit.cover)
-                        : _headImageBytes != null
+                    child: _headImageBytes != null
                         ? Image.memory(_headImageBytes!, fit: BoxFit.cover)
                         : _headImageUrl != null
                         ? Image.network(

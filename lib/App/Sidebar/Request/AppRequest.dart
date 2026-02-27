@@ -1,22 +1,23 @@
-import 'package:evacutaion/WebPages/WebMainDashboard.dart';
-import 'package:evacutaion/WebPages/sidebar/Discharge%20Function/WebDischargeScanner.dart';
+import 'package:evacutaion/App/MainDashbaord.dart';
+import 'package:evacutaion/App/Sidebar/AppManageResidents/ManageResidents.dart';
+import 'package:evacutaion/App/Sidebar/AppViewQR/ManageQR.dart';
+import 'package:evacutaion/App/Sidebar/Discharge%20Residents/DischargeResidentScanner.dart';
+import 'package:evacutaion/App/Sidebar/Discharge%20Residents/DischargeResidentsViewDetails.dart';
+import 'package:evacutaion/App/Sidebar/Request/AppRalatedView.dart';
 import 'package:evacutaion/WebPages/sidebar/Report/Report.dart';
-import 'package:evacutaion/WebPages/sidebar/Request/RelatedView.dart';
-import 'package:evacutaion/WebPages/sidebar/ViewQRcode/WebManageQr.dart';
-import 'package:evacutaion/WebPages/sidebar/WebManageResidents.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-class WebRequestsPage extends StatefulWidget {
-  const WebRequestsPage({super.key});
+class AppRequestsPage extends StatefulWidget {
+  const AppRequestsPage({super.key});
 
   @override
-  State<WebRequestsPage> createState() => _WebRequestsPageState();
+  State<AppRequestsPage> createState() => _AppRequestsPageState();
 }
 
-class _WebRequestsPageState extends State<WebRequestsPage> {
+class _AppRequestsPageState extends State<AppRequestsPage> {
   String selectedPage = "Requests";
   String selectedStatus = "Pending"; // Toggle: Pending, Approved, Declined
 
@@ -401,7 +402,7 @@ class _WebRequestsPageState extends State<WebRequestsPage> {
         context,
         MaterialPageRoute(
           builder: (context) =>
-              RelatedHouseholdsPage(households: relatedHouseholds),
+              AppRelatedHouseholdsPage(households: relatedHouseholds),
         ),
       );
     } catch (e) {
@@ -712,27 +713,25 @@ class _WebRequestsPageState extends State<WebRequestsPage> {
         if (title == 'Dashboard') {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => const WebMainDashboard()),
+            MaterialPageRoute(builder: (context) => const MainDashboard()),
           );
         } else if (title == 'Resident Management') {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => const WebManageResidentsPage(),
+              builder: (context) => const ManageResidentsPage(),
             ),
           );
         } else if (title == 'QR Code Management') {
           Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (context) => const WebDisplayAllQrPage(),
-            ),
+            MaterialPageRoute(builder: (context) => const DisplayAllQrPage()),
           );
         } else if (title == 'Discharge Residents') {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => const WebDischargeDashboardPage(),
+              builder: (context) => const DischargeScanQrPage(),
             ),
           );
         } else if (title == 'Reports') {
@@ -743,7 +742,7 @@ class _WebRequestsPageState extends State<WebRequestsPage> {
         } else if (title == 'Requests') {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => const WebRequestsPage()),
+            MaterialPageRoute(builder: (context) => const AppRequestsPage()),
           );
         }
       },
