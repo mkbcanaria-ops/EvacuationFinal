@@ -1,4 +1,4 @@
-// ignore_for_file: unnecessary_type_check, unused_local_variable
+// ignore_for_file: unnecessary_type_check, unused_local_variable, unnecessary_null_comparison
 
 import 'package:evacutaion/WebPages/sidebar/Discharge%20Function/Discharge_Farmers.dart';
 import 'package:evacutaion/WebPages/sidebar/Discharge%20Function/Discharge_Magsaysay.dart';
