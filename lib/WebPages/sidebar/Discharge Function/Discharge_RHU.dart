@@ -111,7 +111,6 @@ class _WebSantaRHUResidentsPageState extends State<WebSantaRHUResidentsPage> {
       return;
     }
 
-    // Show confirmation dialog
     final confirmed = await _showConfirmationDialog(
       selectedResidents.length,
       selectedResidents.first['Family_Member']?.toString() ?? 'Resident',
@@ -119,14 +118,12 @@ class _WebSantaRHUResidentsPageState extends State<WebSantaRHUResidentsPage> {
 
     if (confirmed != true) return;
 
-    // Discharge each selected resident
     for (var resident in selectedResidents) {
       final uid = resident['UID'].toString();
       final regId = resident['Registration_ID'].toString();
       await _dischargeResidents(regId, uid);
     }
 
-    // Refresh list and clear selection
     await _fetchResidents();
     if (mounted) {
       setState(() {
@@ -157,7 +154,6 @@ class _WebSantaRHUResidentsPageState extends State<WebSantaRHUResidentsPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Icon
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -171,7 +167,6 @@ class _WebSantaRHUResidentsPageState extends State<WebSantaRHUResidentsPage> {
                 ),
               ),
               const SizedBox(height: 20),
-              // Title
               Text(
                 'Confirm Discharge',
                 style: GoogleFonts.poppins(
@@ -181,7 +176,6 @@ class _WebSantaRHUResidentsPageState extends State<WebSantaRHUResidentsPage> {
                 ),
               ),
               const SizedBox(height: 16),
-              // Message
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: Column(
@@ -202,12 +196,10 @@ class _WebSantaRHUResidentsPageState extends State<WebSantaRHUResidentsPage> {
                             text: count == 1
                                 ? residentName
                                 : '$count resident${count > 1 ? 's' : ''}',
-                            style: const TextSpan(
-                              style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF0D743D),
-                              ),
-                            ).style,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF0D743D),
+                            ),
                           ),
                           const TextSpan(
                             text: '?\n\nThis action cannot be undone.',
@@ -219,10 +211,8 @@ class _WebSantaRHUResidentsPageState extends State<WebSantaRHUResidentsPage> {
                 ),
               ),
               const SizedBox(height: 28),
-              // Buttons
               Row(
                 children: [
-                  // No Button
                   Expanded(
                     child: ElevatedButton(
                       onPressed: () => Navigator.pop(ctx, false),
@@ -245,7 +235,6 @@ class _WebSantaRHUResidentsPageState extends State<WebSantaRHUResidentsPage> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  // Yes Button
                   Expanded(
                     child: ElevatedButton(
                       onPressed: () => Navigator.pop(ctx, true),
@@ -280,9 +269,22 @@ class _WebSantaRHUResidentsPageState extends State<WebSantaRHUResidentsPage> {
     if (!mounted) return;
     final supabase = Supabase.instance.client;
 
-    final now = DateTime.now().toUtc().toIso8601String();
+    final now = DateTime.now().toIso8601String();
 
-    // Step 1: Check if residents are currently in Evacuation_A or Evacuation_B
+    bool _toBool(dynamic value) {
+      if (value is bool) return value;
+      if (value is int) return value == 1;
+      if (value is String) {
+        final v = value.trim().toLowerCase();
+        return v == 'true' || v == '1' || v == 'yes';
+      }
+      return false;
+    }
+
+    String _normalizeName(String value) {
+      return value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+    }
+
     final evacAData = await supabase
         .from('Evacuation_A')
         .select('*')
@@ -298,7 +300,6 @@ class _WebSantaRHUResidentsPageState extends State<WebSantaRHUResidentsPage> {
         .maybeSingle();
 
     if (evacAData == null && evacBData == null) {
-      // Residents are not in evacuation tables, meaning already discharged
       if (mounted) {
         await showDialog<void>(
           context: context,
@@ -380,10 +381,66 @@ class _WebSantaRHUResidentsPageState extends State<WebSantaRHUResidentsPage> {
           },
         );
       }
-      return; // Exit without discharging
+      return;
     }
 
-    // Step 2: Fetch registration details and family members
+    final String timeDeployed =
+        (evacAData?['Time_Deployed'] ?? evacBData?['Time_Deployed'] ?? '')
+            .toString();
+
+    final evacAHead = await supabase
+        .from('Evacuation_A')
+        .select('4Ps_Families')
+        .eq('UID', uid)
+        .eq('Relation', 'Head of Family')
+        .maybeSingle();
+
+    final evacBHead = await supabase
+        .from('Evacuation_B')
+        .select('4Ps_Families')
+        .eq('UID', uid)
+        .eq('Relation', 'Head of Family')
+        .maybeSingle();
+
+    final dynamic rawA = evacAHead?['4Ps_Families'];
+    final dynamic rawB = evacBHead?['4Ps_Families'];
+
+    final bool fourPsFamilies = _toBool(rawA) || _toBool(rawB);
+
+    debugPrint('Selected UID: $uid');
+    debugPrint('Evacuation_A Head 4Ps_Families raw: $rawA');
+    debugPrint('Evacuation_B Head 4Ps_Families raw: $rawB');
+    debugPrint('Final 4Ps_Families to store: $fourPsFamilies');
+
+    // NEW: fetch all evac rows so each person uses the real Site from A or B
+    List<Map<String, dynamic>> evacARows = [];
+    List<Map<String, dynamic>> evacBRows = [];
+
+    try {
+      final evacAResponse = await supabase
+          .from('Evacuation_A')
+          .select('*')
+          .eq('UID', uid);
+
+      final evacBResponse = await supabase
+          .from('Evacuation_B')
+          .select('*')
+          .eq('UID', uid);
+
+      evacARows = List<Map<String, dynamic>>.from(evacAResponse);
+      evacBRows = List<Map<String, dynamic>>.from(evacBResponse);
+    } catch (e) {
+      debugPrint('❌ Error fetching evacuation rows: $e');
+    }
+
+    final Map<String, Map<String, dynamic>> evacRowByName = {};
+
+    for (final row in [...evacARows, ...evacBRows]) {
+      final name = (row['Family_Member'] ?? '').toString().trim();
+      if (name.isEmpty) continue;
+      evacRowByName[_normalizeName(name)] = row;
+    }
+
     Map<String, dynamic>? registrationData;
     List<Map<String, dynamic>> familyMembers = [];
 
@@ -416,7 +473,9 @@ class _WebSantaRHUResidentsPageState extends State<WebSantaRHUResidentsPage> {
       return;
     }
 
-    // Step 3: Delete existing entries from Evacuation_A and Evacuation_B
+    final String headBarangay = (registrationData?['Barangay'] ?? '')
+        .toString();
+
     try {
       await supabase.from('Evacuation_A').delete().eq('UID', uid);
       await supabase.from('Evacuation_B').delete().eq('UID', uid);
@@ -427,16 +486,18 @@ class _WebSantaRHUResidentsPageState extends State<WebSantaRHUResidentsPage> {
       debugPrint('⚠️ Error deleting from Evacuation tables: $e');
     }
 
-    // Step 4: Build discharge entries
-    final List<Map<String, Object>> dischargeInserts = [];
+    final List<Map<String, Object?>> dischargeInserts = [];
 
-    // Build head of family entry from registration data
     if (registrationData != null) {
       final headFullName =
           '${registrationData['Head_Surname'] ?? ''} ${registrationData['Head_Firstname'] ?? ''} ${registrationData['Head_Middlename'] ?? ''}'
               .trim();
 
-      final headEntry = <String, Object>{
+      final headEvacRow = evacRowByName[_normalizeName(headFullName)];
+      final headActualSite =
+          (headEvacRow?['Site'] ?? registrationData['Site'] ?? '').toString();
+
+      final headEntry = <String, Object?>{
         'UID': uid,
         'Registration_ID': registrationId,
         'Family_Member': headFullName,
@@ -455,17 +516,24 @@ class _WebSantaRHUResidentsPageState extends State<WebSantaRHUResidentsPage> {
         'Head_Monthly_Income': registrationData['Monthly_Income'] ?? 0.0,
         'City': registrationData['City'] ?? '',
         'Municipality': registrationData['Municipality'] ?? '',
-        'Barangay': registrationData['Barangay'] ?? '',
-        'Site': registrationData['Site'] ?? '',
+        'Barangay': headBarangay,
+        'Site': headActualSite,
         'Date_Transferred': now,
+        'Time_Deployed': timeDeployed,
         'Time_Discharge': now,
+        '4Ps_Families': fourPsFamilies,
       };
       dischargeInserts.add(headEntry);
     }
 
-    // Build family member entries
     for (var member in familyMembers) {
-      final familyEntry = <String, Object>{
+      final memberName = (member['Family_Member'] ?? '').toString().trim();
+      final memberEvacRow = evacRowByName[_normalizeName(memberName)];
+      final actualSite =
+          (memberEvacRow?['Site'] ?? registrationData?['Site'] ?? '')
+              .toString();
+
+      final familyEntry = <String, Object?>{
         'UID': uid,
         'Registration_ID': registrationId,
         'Family_Member': member['Family_Member'] ?? '',
@@ -477,14 +545,16 @@ class _WebSantaRHUResidentsPageState extends State<WebSantaRHUResidentsPage> {
         'Occupational_Skills': member['Occupational_Skills'] ?? '',
         'Remarks': member['Remarks'] ?? '',
         'Code': member['Code'] ?? '',
-        'Site': registrationData?['Site'] ?? '',
+        'Barangay': headBarangay,
+        'Site': actualSite,
         'Date_Transferred': now,
+        'Time_Deployed': timeDeployed,
         'Time_Discharge': now,
+        '4Ps_Families': fourPsFamilies,
       };
       dischargeInserts.add(familyEntry);
     }
 
-    // Step 5: Insert into Discharge_Resident
     try {
       await supabase.from('Discharge_Resident').insert(dischargeInserts);
       if (mounted) {

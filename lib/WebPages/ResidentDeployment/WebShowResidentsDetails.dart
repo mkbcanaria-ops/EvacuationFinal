@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
-
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class WebShowRegistrationPage extends StatelessWidget {
@@ -228,7 +227,7 @@ class _WebShowRegistrationPageFormWidgetState
         'Date_of_Occurrence': _dateController.text,
         'City': _cityController.text,
         'Municipality': _munController.text,
-        'Barangay': _brgyController.text,
+        'Barangay': _brgyController.text.trim(),
         'Site': _evacSiteController.text,
         'Civil_Status': _single
             ? 'Single'
@@ -288,7 +287,7 @@ class _WebShowRegistrationPageFormWidgetState
             row['birthdate']!.text.isNotEmpty) {
           try {
             DateTime birthDate = DateTime.parse(row['birthdate']!.text);
-            ageString = calculateAge(birthDate); // returns years or months
+            ageString = calculateAge(birthDate);
           } catch (_) {
             ageString = row['age']?.text ?? '';
           }
@@ -301,7 +300,7 @@ class _WebShowRegistrationPageFormWidgetState
           'Registration_ID': registrationId,
           'Family_Member': row['name']?.text ?? '',
           'Relation': row['relation']?.text ?? '',
-          'Age': ageString, // store months for <1 year
+          'Age': ageString,
           'Gender': row['gender']?.text ?? '',
           'Civil_Status': row['civilStatus']?.text ?? '',
           'Education': row['education']?.text ?? '',
@@ -330,10 +329,10 @@ class _WebShowRegistrationPageFormWidgetState
   // ASSIGNMENT LOGIC — with BIRTHDATE added & skipping empty rows
   // ============================================================================
 
-  // ...existing code...
   Future<void> _checkSickMembersAndAssign(String registrationId) async {
     if (!mounted) return;
     final supabase = Supabase.instance.client;
+    final String headBarangay = _brgyController.text.trim();
 
     // Only consider rows with meaningful data
     final allMembersWithData = _familyRows.where((row) {
@@ -344,28 +343,18 @@ class _WebShowRegistrationPageFormWidgetState
       ].any((f) => f != null && f.trim().isNotEmpty);
     }).toList();
 
-    // helper: compute age string based on birthdate; returns:
-    // - "<n> month(s)" for < 1 year
-    // - "<n>" (years as string) for >= 1 year
     String _ageFromDobOrFallback(
       String dobText,
       TextEditingController? ageCtrl,
     ) {
-      if (dobText != null && dobText.trim().isNotEmpty) {
+      if (dobText.trim().isNotEmpty) {
         try {
-          // we expect YYYY-MM-DD from the date picker; try DateTime.parse first
-          DateTime? bd = DateTime.tryParse(dobText.trim());
+          final DateTime? bd = DateTime.tryParse(dobText.trim());
           if (bd == null) {
-            // fallback: try to parse common formatted dates (e.g. "Jan 1, 2020")
-            // if custom formats exist, DateFormat parsing can be added
-            return ageCtrl?.text.trim() != null &&
-                    ageCtrl!.text.trim().isNotEmpty
-                ? ageCtrl.text.trim()
+            return ageCtrl?.text.trim().isNotEmpty == true
+                ? ageCtrl!.text.trim()
                 : '0';
           }
-          // calculateAge helper exists in this class and returns:
-          // - "$years" (e.g. "2") for >= 1 year
-          // - "$months month(s)" for < 1 year
           return calculateAge(bd);
         } catch (_) {
           return ageCtrl?.text.trim().isNotEmpty == true
@@ -373,11 +362,37 @@ class _WebShowRegistrationPageFormWidgetState
               : '0';
         }
       } else {
-        // no dob: use provided age field if present
         return ageCtrl?.text.trim().isNotEmpty == true
             ? ageCtrl!.text.trim()
             : '0';
       }
+    }
+
+    String _formatTimeDeployed(DateTime dateTime) {
+      final List<String> months = [
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December',
+      ];
+
+      final month = months[dateTime.month - 1];
+      final day = dateTime.day;
+      final year = dateTime.year;
+
+      final hour12 = dateTime.hour % 12 == 0 ? 12 : dateTime.hour % 12;
+      final minute = dateTime.minute.toString().padLeft(2, '0');
+      final period = dateTime.hour >= 12 ? 'PM' : 'AM';
+
+      return '$month $day, $year | $hour12:$minute $period';
     }
 
     final membersWithCode = allMembersWithData
@@ -388,10 +403,11 @@ class _WebShowRegistrationPageFormWidgetState
         .where((row) => !membersWithCode.contains(row))
         .toList();
 
-    final now = DateTime.now().toUtc().toIso8601String();
+    final nowDateTime = DateTime.now();
+    final now = nowDateTime.toIso8601String();
+    final formattedTimeDeployed = _formatTimeDeployed(nowDateTime);
     final headSite = _evacSiteController.text;
 
-    // Build Head Entry (use DOB when available to compute age)
     Map<String, Object> _buildHeadEntry() {
       final headFullName =
           '${_headSurnameController.text} ${_headFirstController.text} ${_headMiddleController.text}'
@@ -428,10 +444,12 @@ class _WebShowRegistrationPageFormWidgetState
             double.tryParse(_monthlyIncomeController.text) ?? 0.0,
         'City': _cityController.text,
         'Municipality': _munController.text,
-        'Barangay': _brgyController.text,
+        'Barangay': headBarangay,
         'Site': headSite,
         'Date_Transferred': now,
+        'Time_Deployed': formattedTimeDeployed,
         'Date_of_Birth': _dobController.text,
+        '4Ps_Families': _is4PsBeneficiary,
       };
     }
 
@@ -570,6 +588,7 @@ class _WebShowRegistrationPageFormWidgetState
           member['birthdate']?.text ?? '',
           member['age'],
         );
+
         return <String, Object>{
           'UID': widget.uid,
           'Registration_ID': registrationId,
@@ -583,8 +602,11 @@ class _WebShowRegistrationPageFormWidgetState
           'Remarks': member['remarks']?.text ?? '',
           'Code': member['code']?.text ?? '',
           'Date_of_Birth': member['birthdate']?.text ?? '',
+          'Barangay': headBarangay,
           'Site': headSite,
           'Date_Transferred': now,
+          'Time_Deployed': formattedTimeDeployed,
+          '4Ps_Families': _is4PsBeneficiary,
         };
       }).toList();
 
@@ -598,7 +620,6 @@ class _WebShowRegistrationPageFormWidgetState
 
       if (!mounted) return;
 
-      // Success Dialog
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -693,7 +714,7 @@ class _WebShowRegistrationPageFormWidgetState
     }
 
     // ------------------------------------------------------------
-    // STEP 3: CODE MEMBER LOGIC (FULL + FINAL VERSION)
+    // STEP 3: CODE MEMBER LOGIC
     // ------------------------------------------------------------
     String? selectedHelper = potentialHelpers.isNotEmpty
         ? potentialHelpers.first['name']?.text
@@ -716,7 +737,6 @@ class _WebShowRegistrationPageFormWidgetState
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Title
                 Text(
                   'Assign In-Charge',
                   style: GoogleFonts.poppins(
@@ -734,7 +754,7 @@ class _WebShowRegistrationPageFormWidgetState
                   ),
                 ),
                 const SizedBox(height: 16),
-                // Members with code
+
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
@@ -765,7 +785,7 @@ class _WebShowRegistrationPageFormWidgetState
                   ),
                 ),
                 const SizedBox(height: 16),
-                // Dropdown selection
+
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
@@ -805,7 +825,7 @@ class _WebShowRegistrationPageFormWidgetState
                   },
                 ),
                 const SizedBox(height: 24),
-                // Actions
+
                 Row(
                   children: [
                     Expanded(
@@ -833,9 +853,7 @@ class _WebShowRegistrationPageFormWidgetState
                           Navigator.pop(dialogContext);
 
                           try {
-                            final nowLocal = DateTime.now()
-                                .toUtc()
-                                .toIso8601String();
+                            final nowLocal = DateTime.now().toIso8601String();
 
                             List<Map<String, Object>> evacBInserts = [];
                             List<Map<String, Object>> evacAInserts = [];
@@ -846,6 +864,7 @@ class _WebShowRegistrationPageFormWidgetState
                                 member['birthdate']?.text ?? '',
                                 member['age'],
                               );
+
                               evacBInserts.add({
                                 'UID': widget.uid,
                                 'Registration_ID': registrationId,
@@ -862,8 +881,11 @@ class _WebShowRegistrationPageFormWidgetState
                                 'Code': member['code']?.text ?? '',
                                 'Date_of_Birth':
                                     member['birthdate']?.text ?? '',
+                                'Barangay': headBarangay,
                                 'Site': 'Santa RHU',
                                 'Date_Transferred': nowLocal,
+                                'Time_Deployed': formattedTimeDeployed,
+                                '4Ps_Families': _is4PsBeneficiary,
                               });
                             }
 
@@ -871,10 +893,12 @@ class _WebShowRegistrationPageFormWidgetState
                             final helperRow = allMembersWithData.firstWhere(
                               (row) => row['name']?.text == selectedHelper,
                             );
+
                             final helperAgeValue = _ageFromDobOrFallback(
                               helperRow['birthdate']?.text ?? '',
                               helperRow['age'],
                             );
+
                             evacBInserts.add({
                               'UID': widget.uid,
                               'Registration_ID': registrationId,
@@ -891,8 +915,11 @@ class _WebShowRegistrationPageFormWidgetState
                               'Code': 'Assign',
                               'Date_of_Birth':
                                   helperRow['birthdate']?.text ?? '',
+                              'Barangay': headBarangay,
                               'Site': 'Santa RHU',
                               'Date_Transferred': nowLocal,
+                              'Time_Deployed': formattedTimeDeployed,
+                              '4Ps_Families': _is4PsBeneficiary,
                             });
 
                             // 3️⃣ ALL OTHER MEMBERS → EVAC A
@@ -911,6 +938,7 @@ class _WebShowRegistrationPageFormWidgetState
                                   member['birthdate']?.text ?? '',
                                   member['age'],
                                 );
+
                                 evacAInserts.add({
                                   'UID': widget.uid,
                                   'Registration_ID': registrationId,
@@ -927,8 +955,11 @@ class _WebShowRegistrationPageFormWidgetState
                                   'Code': member['code']?.text ?? '',
                                   'Date_of_Birth':
                                       member['birthdate']?.text ?? '',
+                                  'Barangay': headBarangay,
                                   'Site': headSite,
                                   'Date_Transferred': nowLocal,
+                                  'Time_Deployed': formattedTimeDeployed,
+                                  '4Ps_Families': _is4PsBeneficiary,
                                 });
                               }
                             }
@@ -958,7 +989,6 @@ class _WebShowRegistrationPageFormWidgetState
                               debugPrint('❌ Evacuation_A insert failed: $e');
                             }
 
-                            // SUCCESS POPUP
                             if (mounted) {
                               if (okA && okB) {
                                 await _showInsertSuccessDialog(

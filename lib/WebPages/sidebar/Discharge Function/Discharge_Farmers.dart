@@ -1,9 +1,9 @@
 // ignore_for_file: unnecessary_null_comparison
 
+import 'package:evacutaion/WebPages/sidebar/Discharge%20Function/WebDischargeScanner.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:evacutaion/WebPages/sidebar/Discharge Function/WebDischargeScanner.dart';
 
 class WebFarmersResidentsPage extends StatefulWidget {
   const WebFarmersResidentsPage({super.key});
@@ -188,7 +188,6 @@ class _WebFarmersResidentsPageState extends State<WebFarmersResidentsPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Icon
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -202,7 +201,6 @@ class _WebFarmersResidentsPageState extends State<WebFarmersResidentsPage> {
                 ),
               ),
               const SizedBox(height: 20),
-              // Title
               Text(
                 'Confirm Discharge',
                 style: GoogleFonts.poppins(
@@ -212,7 +210,6 @@ class _WebFarmersResidentsPageState extends State<WebFarmersResidentsPage> {
                 ),
               ),
               const SizedBox(height: 16),
-              // Message
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: Column(
@@ -250,10 +247,8 @@ class _WebFarmersResidentsPageState extends State<WebFarmersResidentsPage> {
                 ),
               ),
               const SizedBox(height: 28),
-              // Buttons
               Row(
                 children: [
-                  // No Button
                   Expanded(
                     child: ElevatedButton(
                       onPressed: () => Navigator.pop(ctx, false),
@@ -276,7 +271,6 @@ class _WebFarmersResidentsPageState extends State<WebFarmersResidentsPage> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  // Yes Button
                   Expanded(
                     child: ElevatedButton(
                       onPressed: () => Navigator.pop(ctx, true),
@@ -311,9 +305,53 @@ class _WebFarmersResidentsPageState extends State<WebFarmersResidentsPage> {
     if (!mounted) return;
     final supabase = Supabase.instance.client;
 
-    final now = DateTime.now().toUtc().toIso8601String();
+    final nowDateTime = DateTime.now();
+    final now = nowDateTime.toIso8601String();
 
-    // Step 1: Check if residents are currently in Evacuation_A or Evacuation_B
+    String _formatDateTime(DateTime dateTime) {
+      final List<String> months = [
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December',
+      ];
+
+      final month = months[dateTime.month - 1];
+      final day = dateTime.day;
+      final year = dateTime.year;
+
+      final hour12 = dateTime.hour % 12 == 0 ? 12 : dateTime.hour % 12;
+      final minute = dateTime.minute.toString().padLeft(2, '0');
+      final period = dateTime.hour >= 12 ? 'PM' : 'AM';
+
+      return '$month $day, $year | $hour12:$minute $period';
+    }
+
+    final formattedTimeDischarge = _formatDateTime(nowDateTime);
+
+    bool _toBool(dynamic value) {
+      if (value is bool) return value;
+      if (value is int) return value == 1;
+      if (value is String) {
+        final v = value.trim().toLowerCase();
+        return v == 'true' || v == '1' || v == 'yes';
+      }
+      return false;
+    }
+
+    String _normalizeName(String value) {
+      return value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+    }
+
+    // Step 1: Check if resident is currently in Evacuation_A or Evacuation_B
     final evacAData = await supabase
         .from('Evacuation_A')
         .select('*')
@@ -329,7 +367,6 @@ class _WebFarmersResidentsPageState extends State<WebFarmersResidentsPage> {
         .maybeSingle();
 
     if (evacAData == null && evacBData == null) {
-      // Residents are not in evacuation tables, meaning already discharged
       if (mounted) {
         await showDialog<void>(
           context: context,
@@ -411,7 +448,66 @@ class _WebFarmersResidentsPageState extends State<WebFarmersResidentsPage> {
           },
         );
       }
-      return; // Exit without discharging
+      return;
+    }
+
+    // Get original Time_Deployed
+    final String timeDeployed =
+        (evacAData?['Time_Deployed'] ?? evacBData?['Time_Deployed'] ?? '')
+            .toString();
+
+    // Get 4Ps_Families specifically from the HEAD OF FAMILY row
+    final evacAHead = await supabase
+        .from('Evacuation_A')
+        .select('4Ps_Families')
+        .eq('UID', uid)
+        .eq('Relation', 'Head of Family')
+        .maybeSingle();
+
+    final evacBHead = await supabase
+        .from('Evacuation_B')
+        .select('4Ps_Families')
+        .eq('UID', uid)
+        .eq('Relation', 'Head of Family')
+        .maybeSingle();
+
+    final dynamic rawA = evacAHead?['4Ps_Families'];
+    final dynamic rawB = evacBHead?['4Ps_Families'];
+
+    final bool fourPsFamilies = _toBool(rawA) || _toBool(rawB);
+
+    debugPrint('Selected UID: $uid');
+    debugPrint('Evacuation_A Head 4Ps_Families raw: $rawA');
+    debugPrint('Evacuation_B Head 4Ps_Families raw: $rawB');
+    debugPrint('Final 4Ps_Families to store: $fourPsFamilies');
+
+    // fetch all evac rows first so each member gets the real site
+    List<Map<String, dynamic>> evacARows = [];
+    List<Map<String, dynamic>> evacBRows = [];
+
+    try {
+      final evacAResponse = await supabase
+          .from('Evacuation_A')
+          .select('*')
+          .eq('UID', uid);
+
+      final evacBResponse = await supabase
+          .from('Evacuation_B')
+          .select('*')
+          .eq('UID', uid);
+
+      evacARows = List<Map<String, dynamic>>.from(evacAResponse);
+      evacBRows = List<Map<String, dynamic>>.from(evacBResponse);
+    } catch (e) {
+      debugPrint('❌ Error fetching evacuation rows: $e');
+    }
+
+    final Map<String, Map<String, dynamic>> evacRowByName = {};
+
+    for (final row in [...evacARows, ...evacBRows]) {
+      final name = (row['Family_Member'] ?? '').toString().trim();
+      if (name.isEmpty) continue;
+      evacRowByName[_normalizeName(name)] = row;
     }
 
     // Step 2: Fetch registration details and family members
@@ -447,6 +543,9 @@ class _WebFarmersResidentsPageState extends State<WebFarmersResidentsPage> {
       return;
     }
 
+    final String headBarangay = (registrationData?['Barangay'] ?? '')
+        .toString();
+
     // Step 3: Delete existing entries from Evacuation_A and Evacuation_B
     try {
       await supabase.from('Evacuation_A').delete().eq('UID', uid);
@@ -459,15 +558,18 @@ class _WebFarmersResidentsPageState extends State<WebFarmersResidentsPage> {
     }
 
     // Step 4: Build discharge entries
-    final List<Map<String, Object>> dischargeInserts = [];
+    final List<Map<String, Object?>> dischargeInserts = [];
 
-    // Build head of family entry from registration data
     if (registrationData != null) {
       final headFullName =
           '${registrationData['Head_Surname'] ?? ''} ${registrationData['Head_Firstname'] ?? ''} ${registrationData['Head_Middlename'] ?? ''}'
               .trim();
 
-      final headEntry = <String, Object>{
+      final headEvacRow = evacRowByName[_normalizeName(headFullName)];
+      final headActualSite =
+          (headEvacRow?['Site'] ?? registrationData['Site'] ?? '').toString();
+
+      final headEntry = <String, Object?>{
         'UID': uid,
         'Registration_ID': registrationId,
         'Family_Member': headFullName,
@@ -486,17 +588,24 @@ class _WebFarmersResidentsPageState extends State<WebFarmersResidentsPage> {
         'Head_Monthly_Income': registrationData['Monthly_Income'] ?? 0.0,
         'City': registrationData['City'] ?? '',
         'Municipality': registrationData['Municipality'] ?? '',
-        'Barangay': registrationData['Barangay'] ?? '',
-        'Site': registrationData['Site'] ?? '',
+        'Barangay': headBarangay,
+        'Site': headActualSite,
         'Date_Transferred': now,
-        'Time_Discharge': now,
+        'Time_Deployed': timeDeployed,
+        'Time_Discharge': formattedTimeDischarge,
+        '4Ps_Families': fourPsFamilies,
       };
       dischargeInserts.add(headEntry);
     }
 
-    // Build family member entries
     for (var member in familyMembers) {
-      final familyEntry = <String, Object>{
+      final memberName = (member['Family_Member'] ?? '').toString().trim();
+      final memberEvacRow = evacRowByName[_normalizeName(memberName)];
+      final actualSite =
+          (memberEvacRow?['Site'] ?? registrationData?['Site'] ?? '')
+              .toString();
+
+      final familyEntry = <String, Object?>{
         'UID': uid,
         'Registration_ID': registrationId,
         'Family_Member': member['Family_Member'] ?? '',
@@ -508,9 +617,12 @@ class _WebFarmersResidentsPageState extends State<WebFarmersResidentsPage> {
         'Occupational_Skills': member['Occupational_Skills'] ?? '',
         'Remarks': member['Remarks'] ?? '',
         'Code': member['Code'] ?? '',
-        'Site': registrationData?['Site'] ?? '',
+        'Barangay': headBarangay,
+        'Site': actualSite,
         'Date_Transferred': now,
-        'Time_Discharge': now,
+        'Time_Deployed': timeDeployed,
+        'Time_Discharge': formattedTimeDischarge,
+        '4Ps_Families': fourPsFamilies,
       };
       dischargeInserts.add(familyEntry);
     }

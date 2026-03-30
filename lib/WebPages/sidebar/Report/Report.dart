@@ -1,17 +1,12 @@
-// ignore_for_file: use_build_context_synchronously, unused_local_variable
+// ignore_for_file: use_build_context_synchronously
 
-import 'package:evacutaion/WebPages/sidebar/Report/web_reports_table_page.dart';
-import 'package:evacutaion/WebPages/sidebar/Request/Request.dart';
 import 'package:evacutaion/WebPages/WebMainDashboard.dart';
 import 'package:evacutaion/WebPages/sidebar/Discharge%20Function/WebDischargeScanner.dart';
+import 'package:evacutaion/WebPages/sidebar/Report/Report_Preview.dart';
 import 'package:evacutaion/WebPages/sidebar/ViewQRcode/WebManageQr.dart';
-import 'package:evacutaion/WebPages/sidebar/WebManageResidents.dart';
-import 'package:excel/excel.dart' as xls; // FIX: Avoid Border conflict
+import 'package:evacutaion/WebPages/sidebar/WebEditResident/WebManageResidents.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'dart:typed_data';
-import 'package:flutter/foundation.dart';
-import 'package:universal_html/html.dart' as html;
 
 class WebReportsPage extends StatefulWidget {
   const WebReportsPage({super.key});
@@ -24,14 +19,11 @@ class _WebReportsPageState extends State<WebReportsPage> {
   String selectedPage = "Reports";
 
   DateTime? _startDate;
-  DateTime? _endDate;
-
-  // ----------------------------------------------------------------------
-  //                            DATE PICKERS
-  // ----------------------------------------------------------------------
+  DateTime? _endDateTime;
 
   Future<void> _pickStartDate() async {
     final now = DateTime.now();
+
     final picked = await showDatePicker(
       context: context,
       initialDate: _startDate ?? now,
@@ -41,27 +33,81 @@ class _WebReportsPageState extends State<WebReportsPage> {
     );
 
     if (picked != null) {
-      setState(() => _startDate = picked);
+      final newStartDate = DateTime(picked.year, picked.month, picked.day);
 
-      if (_endDate != null && _endDate!.isBefore(picked)) {
-        setState(() => _endDate = picked);
-      }
+      setState(() {
+        _startDate = newStartDate;
+
+        if (_endDateTime != null && _endDateTime!.isBefore(_startDate!)) {
+          _endDateTime = null;
+        }
+      });
     }
   }
 
-  Future<void> _pickEndDate() async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
+  Future<void> _pickEndDateTime() async {
+    if (_startDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select the start date first.')),
+      );
+      return;
+    }
+
+    final initialBase = _endDateTime ?? _startDate!;
+    final pickedDate = await showDatePicker(
       context: context,
-      initialDate: _endDate ?? now,
-      firstDate: _startDate ?? DateTime(2000),
+      initialDate: initialBase,
+      firstDate: _startDate!,
       lastDate: DateTime(2100),
       builder: _datepickerTheme,
     );
 
-    if (picked != null) {
-      setState(() => _endDate = picked);
+    if (pickedDate == null) return;
+    if (!mounted) return;
+
+    final initialTime = _endDateTime != null
+        ? TimeOfDay.fromDateTime(_endDateTime!)
+        : const TimeOfDay(hour: 0, minute: 0);
+
+    final pickedTime = await showTimePicker(
+      context: context,
+      initialTime: initialTime,
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.light().copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFF0D743D),
+              onPrimary: Colors.white,
+              onSurface: Colors.black,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (pickedTime == null) return;
+
+    final selectedDateTime = DateTime(
+      pickedDate.year,
+      pickedDate.month,
+      pickedDate.day,
+      pickedTime.hour,
+      pickedTime.minute,
+    );
+
+    if (selectedDateTime.isBefore(_startDate!)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('End date and time cannot be earlier than start date.'),
+        ),
+      );
+      return;
     }
+
+    setState(() {
+      _endDateTime = selectedDateTime;
+    });
   }
 
   Widget _datepickerTheme(BuildContext context, Widget? child) {
@@ -77,125 +123,26 @@ class _WebReportsPageState extends State<WebReportsPage> {
     );
   }
 
-  // ----------------------------------------------------------------------
-  //                         EXCEL GENERATION
-  // ----------------------------------------------------------------------
-  void _generateExcelReport() {
-    final excel = xls.Excel.createExcel();
-    final sheet = excel['Sheet1'];
-
-    // ---------- Column Width ----------
-    try {
-      sheet.setColumnWidth(0, 50); // REGION / PROVINCE / MUNICIPALITY
-      sheet.setColumnWidth(1, 20); // Barangays
-      sheet.setColumnWidth(2, 20); // Families
-      sheet.setColumnWidth(3, 20); // Persons
-      sheet.setColumnWidth(4, 20); // 4Ps Families
-    } catch (_) {}
-
-    // ---------- Top Header ----------
-    sheet.appendRow([xls.TextCellValue('Republic of the Philippines')]);
-    sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0))
-      ..cellStyle = xls.CellStyle(
-        bold: true,
-        horizontalAlign: xls.HorizontalAlign.Left,
-        verticalAlign: xls.VerticalAlign.Center,
-      );
-
-    sheet.appendRow([xls.TextCellValue('Province of Ilocos Sur')]);
-    sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 1))
-      ..cellStyle = xls.CellStyle(
-        bold: true,
-        horizontalAlign: xls.HorizontalAlign.Left,
-        verticalAlign: xls.VerticalAlign.Center,
-      );
-
-    // ---------- HEADER ROW ----------
-    sheet.appendRow([
-      xls.TextCellValue('REGION / PROVINCE / MUNICIPALITY'),
-      xls.TextCellValue('NUMBER OF AFFECTED'),
-      xls.TextCellValue(''),
-      xls.TextCellValue(''),
-      xls.TextCellValue(''),
-    ]);
-
-    // Merge REGION vertically to cover 2 rows (header + sub-columns)
-    sheet.merge(
-      xls.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 2),
-      xls.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 3),
-    );
-    sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 2))
-      ..cellStyle = xls.CellStyle(
-        bold: true,
-        fontSize: 10,
-        horizontalAlign: xls.HorizontalAlign.Center,
-        verticalAlign: xls.VerticalAlign.Center,
-      );
-
-    // Merge NUMBER OF AFFECTED horizontally (columns 1–4, header row)
-    sheet.merge(
-      xls.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 2),
-      xls.CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: 2),
-    );
-    sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: 2))
-      ..cellStyle = xls.CellStyle(
-        bold: true,
-        fontSize: 10,
-        horizontalAlign: xls.HorizontalAlign.Center,
-        verticalAlign: xls.VerticalAlign.Center,
-      );
-
-    // ---------- SUB-COLUMNS ROW (row 3) ----------
-    sheet.appendRow([
-      xls.TextCellValue(''), // Column 0 is merged REGION
-      xls.TextCellValue('Barangays'),
-      xls.TextCellValue('Families'),
-      xls.TextCellValue('Persons'),
-      xls.TextCellValue('4Ps Families'),
-    ]);
-
-    // Style sub-columns
-    for (int col = 1; col <= 4; col++) {
-      sheet.cell(xls.CellIndex.indexByColumnRow(columnIndex: col, rowIndex: 3))
-        ..cellStyle = xls.CellStyle(
-          bold: true,
-          fontSize: 10,
-          horizontalAlign: xls.HorizontalAlign.Center,
-          verticalAlign: xls.VerticalAlign.Center,
-        );
-    }
-
-    // ---------- Export ----------
-    final excelBytes = excel.encode();
-    if (excelBytes == null || excelBytes.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to generate Excel.')),
-      );
-      return;
-    }
-
-    if (kIsWeb) {
-      final blob = html.Blob([
-        Uint8List.fromList(excelBytes),
-      ], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      final url = html.Url.createObjectUrlFromBlob(blob);
-
-      html.AnchorElement(href: url)
-        ..setAttribute('download', 'Evacuee_Report_Design.xlsx')
-        ..click();
-
-      html.Url.revokeObjectUrl(url);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Excel generated and download started.')),
-      );
-      return;
-    }
-
-    debugPrint('Excel generated (mobile). Add FileSaver for mobile use.');
+  String _formatDate(DateTime? date) {
+    if (date == null) return '';
+    return "${date.year.toString().padLeft(4, '0')}-"
+        "${date.month.toString().padLeft(2, '0')}-"
+        "${date.day.toString().padLeft(2, '0')}";
   }
 
-  // 🧭 Drawer
+  String _formatDateTime(DateTime? dateTime) {
+    if (dateTime == null) return '';
+
+    final hour = dateTime.hour % 12 == 0 ? 12 : dateTime.hour % 12;
+    final minute = dateTime.minute.toString().padLeft(2, '0');
+    final period = dateTime.hour >= 12 ? 'PM' : 'AM';
+
+    return "${dateTime.year.toString().padLeft(4, '0')}-"
+        "${dateTime.month.toString().padLeft(2, '0')}-"
+        "${dateTime.day.toString().padLeft(2, '0')} "
+        "$hour:$minute $period";
+  }
+
   Widget _buildAdminDrawer() {
     return Drawer(
       child: SafeArea(
@@ -216,8 +163,6 @@ class _WebReportsPageState extends State<WebReportsPage> {
                   ),
                 ),
               ),
-
-              // Drawer items
               _buildDrawerItem('Dashboard', Icons.dashboard_outlined),
               _buildDrawerItem(
                 'Resident Management',
@@ -228,9 +173,7 @@ class _WebReportsPageState extends State<WebReportsPage> {
                 'Discharge Residents',
                 Icons.exit_to_app_rounded,
               ),
-
               const Divider(),
-
               _buildDrawerItem('Reports', Icons.analytics_outlined),
               _buildDrawerItem('Requests', Icons.pending_actions_outlined),
             ],
@@ -240,7 +183,6 @@ class _WebReportsPageState extends State<WebReportsPage> {
     );
   }
 
-  // 🔹 Drawer Item Widget with if-else navigation logic
   Widget _buildDrawerItem(String title, IconData icon) {
     final bool isSelected = selectedPage == title;
 
@@ -259,48 +201,30 @@ class _WebReportsPageState extends State<WebReportsPage> {
         ),
       ),
       onTap: () {
-        setState(() {
-          selectedPage = title;
-        });
-
+        setState(() => selectedPage = title);
         Navigator.pop(context);
 
-        // 🧭 Navigation logic
         if (title == 'Dashboard') {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => const WebMainDashboard()),
+            MaterialPageRoute(builder: (_) => const WebMainDashboard()),
           );
         } else if (title == 'Resident Management') {
           Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (context) => const WebManageResidentsPage(),
-            ),
+            MaterialPageRoute(builder: (_) => const WebManageResidentsPage()),
           );
         } else if (title == 'QR Code Management') {
           Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (context) => const WebDisplayAllQrPage(),
-            ),
+            MaterialPageRoute(builder: (_) => const WebDisplayAllQrPage()),
           );
         } else if (title == 'Discharge Residents') {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => const WebDischargeDashboardPage(),
+              builder: (_) => const WebDischargeDashboardPage(),
             ),
-          );
-        } else if (title == 'Reports') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const WebReportsPage()),
-          );
-        } else if (title == 'Requests') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const WebRequestsPage()),
           );
         }
       },
@@ -333,7 +257,6 @@ class _WebReportsPageState extends State<WebReportsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // PAGE TITLE
                 Text(
                   "Evacuation Population Report",
                   style: GoogleFonts.poppins(
@@ -341,10 +264,7 @@ class _WebReportsPageState extends State<WebReportsPage> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-
                 const SizedBox(height: 25),
-
-                // DATE RANGE CARD
                 Container(
                   padding: EdgeInsets.all(isWide ? 25 : 18),
                   decoration: BoxDecoration(
@@ -356,7 +276,7 @@ class _WebReportsPageState extends State<WebReportsPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        "Select Date Range",
+                        "Select Report Period",
                         style: GoogleFonts.poppins(
                           fontSize: isWide ? 20 : 18,
                           fontWeight: FontWeight.w600,
@@ -375,10 +295,10 @@ class _WebReportsPageState extends State<WebReportsPage> {
                                 ),
                                 const SizedBox(width: 25),
                                 Expanded(
-                                  child: _dateField(
-                                    "End Date",
-                                    _endDate,
-                                    _pickEndDate,
+                                  child: _dateTimeField(
+                                    "End Date & Time",
+                                    _endDateTime,
+                                    _pickEndDateTime,
                                   ),
                                 ),
                               ],
@@ -391,41 +311,70 @@ class _WebReportsPageState extends State<WebReportsPage> {
                                   _pickStartDate,
                                 ),
                                 const SizedBox(height: 15),
-                                _dateField("End Date", _endDate, _pickEndDate),
+                                _dateTimeField(
+                                  "End Date & Time",
+                                  _endDateTime,
+                                  _pickEndDateTime,
+                                ),
                               ],
                             ),
-                    ],
-                  ),
-                ),
+                      const SizedBox(height: 25),
+                      Center(
+                        child: SizedBox(
+                          width: isWide ? 300 : double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              if (_startDate == null || _endDateTime == null) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Please select the start date and end date & time.',
+                                    ),
+                                  ),
+                                );
+                                return;
+                              }
 
-                const SizedBox(height: 35),
+                              if (_endDateTime!.isBefore(_startDate!)) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'End date and time cannot be earlier than start date.',
+                                    ),
+                                  ),
+                                );
+                                return;
+                              }
 
-                // CENTERED DOWNLOAD BUTTON
-                Center(
-                  child: SizedBox(
-                    width: isWide ? 300 : double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => WebReportsTablePage(),
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => WebReportsPreviewPage(
+                                    startDate: _startDate!,
+                                    endDateTime: _endDateTime!,
+                                  ),
+                                ),
+                              );
+                            },
+                            icon: const Icon(
+                              Icons.preview,
+                              color: Colors.white,
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF0D743D),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                            label: Text(
+                              "Preview",
+                              style: GoogleFonts.poppins(
+                                color: Colors.white,
+                                fontSize: 16,
+                              ),
+                            ),
                           ),
-                        );
-                      },
-                      icon: const Icon(Icons.table_chart, color: Colors.white),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0D743D),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                      label: Text(
-                        "Generate Report",
-                        style: GoogleFonts.poppins(
-                          color: Colors.white,
-                          fontSize: 16,
                         ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
               ],
@@ -456,10 +405,39 @@ class _WebReportsPageState extends State<WebReportsPage> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                date == null ? label : date.toString().split(" ")[0],
+                date == null ? label : _formatDate(date),
                 style: GoogleFonts.poppins(
                   fontSize: 15,
                   color: date == null ? Colors.grey : Colors.black,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _dateTimeField(String label, DateTime? dateTime, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.grey.shade400),
+          color: Colors.white,
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.access_time, size: 18, color: Color(0xFF0D743D)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                dateTime == null ? label : _formatDateTime(dateTime),
+                style: GoogleFonts.poppins(
+                  fontSize: 15,
+                  color: dateTime == null ? Colors.grey : Colors.black,
                 ),
               ),
             ),

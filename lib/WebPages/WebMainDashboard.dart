@@ -6,7 +6,7 @@ import 'package:evacutaion/WebPages/sidebar/Request/Request.dart';
 import 'package:evacutaion/WebPages/ResidentDeployment/Web_Qr_Scanner.dart';
 import 'package:evacutaion/WebPages/Web_Registration.dart';
 import 'package:evacutaion/WebPages/sidebar/ViewQRcode/WebManageQr.dart';
-import 'package:evacutaion/WebPages/sidebar/WebManageResidents.dart';
+import 'package:evacutaion/WebPages/sidebar/WebEditResident/WebManageResidents.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';

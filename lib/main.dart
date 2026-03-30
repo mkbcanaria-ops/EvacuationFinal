@@ -4,7 +4,8 @@ import 'package:evacutaion/ResidentPAges/ResidentDashboard.dart';
 import 'package:evacutaion/WebPages/LoginPage.dart';
 import 'package:evacutaion/WebPages/WLandingPage.dart';
 import 'package:evacutaion/WebPages/WebMainDashboard.dart';
-import 'package:evacutaion/WebPages/sidebar/Report/web_reports_table_page.dart';
+import 'package:evacutaion/WebPages/sidebar/Report/Report.dart';
+import 'package:evacutaion/WebPages/sidebar/Report/Report_Preview.dart';
 import 'package:flutter/material.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -35,7 +36,7 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
       ),
 
-      home: MainDashboard(),
+      home: WebReportsPage(),
     );
   }
 }

@@ -5,7 +5,7 @@ import 'package:evacutaion/WebPages/sidebar/Discharge%20Function/WebDischargeSca
 import 'package:evacutaion/WebPages/sidebar/Report/Report.dart';
 import 'package:evacutaion/WebPages/sidebar/Request/Request.dart';
 import 'package:evacutaion/WebPages/WebMainDashboard.dart';
-import 'package:evacutaion/WebPages/sidebar/WebManageResidents.dart';
+import 'package:evacutaion/WebPages/sidebar/WebEditResident/WebManageResidents.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';

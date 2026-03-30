@@ -2,6 +2,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:evacutaion/WebPages/sidebar/WebEditResident/WebManageResidents.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -137,6 +138,7 @@ class _ShowRegistrationPageFormWidgetState
       _familyRows.add({
         'name': TextEditingController(),
         'relation': TextEditingController(),
+        'birthdate': TextEditingController(), // ✅ NEW DOB CONTROLLER
         'age': TextEditingController(),
         'gender': TextEditingController(),
         'civilStatus': TextEditingController(),
@@ -174,9 +176,9 @@ class _ShowRegistrationPageFormWidgetState
     try {
       final supabase = Supabase.instance.client;
 
-      print('🧩 Saving registration update...');
-      print('🧩 Date of Occurrence: ${_dateController.text}');
-      print('🧩 Selected Evacuation Site: ${_evacSiteController.text}');
+      debugPrint('🧩 Saving registration update...');
+      debugPrint('🧩 Date of Occurrence: ${_dateController.text}');
+      debugPrint('🧩 Selected Evacuation Site: ${_evacSiteController.text}');
 
       // Step 1: Fetch existing image
       final existingRecord = await supabase
@@ -185,7 +187,7 @@ class _ShowRegistrationPageFormWidgetState
           .eq('UID', widget.uid)
           .maybeSingle();
 
-      String? oldImagePath = existingRecord?['Head_Image'];
+      String? oldImagePath = existingRecord?['Head_Image']?.toString();
       String? newImagePath;
 
       // Step 2: Upload new image if selected
@@ -205,6 +207,7 @@ class _ShowRegistrationPageFormWidgetState
         // Upload new image
         final fileName =
             '${widget.uid}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
         await bucket.uploadBinary(
           fileName,
           _headImageBytes!,
@@ -217,30 +220,31 @@ class _ShowRegistrationPageFormWidgetState
 
       // Step 3: Prepare registration data
       final updateData = {
-        'Head_Firstname': _headFirstController.text,
-        'Head_Middlename': _headMiddleController.text,
-        'Head_Surname': _headSurnameController.text,
-        'Head_Age': int.tryParse(_headAgeController.text) ?? 0,
-        'Head_Sex': _headSexController.text,
-        'Date_of_Birth': _dobController.text,
-        'Occupation': _occupationController.text,
-        'Monthly_Income': double.tryParse(_monthlyIncomeController.text) ?? 0,
-        'Type_of_Disaster': _disasterController.text,
-        'Date_of_Occurrence': _dateController.text,
-        'City': _cityController.text,
-        'Municipality': _munController.text,
-        'Barangay': _brgyController.text,
-        'Site': _evacSiteController.text,
+        'Head_Firstname': _headFirstController.text.trim(),
+        'Head_Middlename': _headMiddleController.text.trim(),
+        'Head_Surname': _headSurnameController.text.trim(),
+        'Head_Age': int.tryParse(_headAgeController.text.trim()) ?? 0,
+        'Head_Sex': _headSexController.text.trim(),
+        'Date_of_Birth': _dobController.text.trim(),
+        'Occupation': _occupationController.text.trim(),
+        'Monthly_Income':
+            double.tryParse(_monthlyIncomeController.text.trim()) ?? 0,
+        'Type_of_Disaster': _disasterController.text.trim(),
+        'Date_of_Occurrence': _dateController.text.trim(),
+        'City': _cityController.text.trim(),
+        'Municipality': _munController.text.trim(),
+        'Barangay': _brgyController.text.trim(),
+        'Site': _evacSiteController.text.trim(),
         'Civil_Status': _single
             ? 'Single'
             : _married
             ? 'Married'
             : _widowed
             ? 'Widowed'
-            : _civilOtherController.text,
+            : _civilOtherController.text.trim(),
         '4Ps_Beneficiary': _is4PsBeneficiary,
         'IP': _isIP,
-        'IP_Type_of_Ethnicity': _ipTypeController.text,
+        'IP_Type_of_Ethnicity': _ipTypeController.text.trim(),
         if (newImagePath != null) 'Head_Image': newImagePath,
       };
 
@@ -250,7 +254,7 @@ class _ShowRegistrationPageFormWidgetState
           .update(updateData)
           .eq('UID', widget.uid);
 
-      // Step 5: Refresh family members
+      // Step 5: Fetch Registration_ID
       final registrationData = await supabase
           .from('Registration_Table')
           .select('Registration_ID')
@@ -263,24 +267,52 @@ class _ShowRegistrationPageFormWidgetState
 
       final registrationId = registrationData['Registration_ID'];
 
-      // Delete old family members
+      // Step 6: Delete old family members
       await supabase.from('Family_Members').delete().eq('UID', widget.uid);
 
-      // Insert updated family members
+      // Step 7: Insert updated family members
       final List<Map<String, dynamic>> newFamilyMembers = [];
+
       for (var row in _familyRows) {
+        final name = row['name']?.text.trim() ?? '';
+        final relation = row['relation']?.text.trim() ?? '';
+        final birthdate = row['birthdate']?.text.trim() ?? '';
+        final age = row['age']?.text.trim() ?? '';
+        final gender = row['gender']?.text.trim() ?? '';
+        final civilStatus = row['civilStatus']?.text.trim() ?? '';
+        final education = row['education']?.text.trim() ?? '';
+        final skills = row['skills']?.text.trim() ?? '';
+        final remarks = row['remarks']?.text.trim() ?? '';
+        final code = row['code']?.text.trim() ?? '';
+
+        // ✅ Skip row if everything is empty
+        final isRowEmpty =
+            name.isEmpty &&
+            relation.isEmpty &&
+            birthdate.isEmpty &&
+            age.isEmpty &&
+            gender.isEmpty &&
+            civilStatus.isEmpty &&
+            education.isEmpty &&
+            skills.isEmpty &&
+            remarks.isEmpty &&
+            code.isEmpty;
+
+        if (isRowEmpty) continue;
+
         newFamilyMembers.add({
           'UID': widget.uid,
           'Registration_ID': registrationId,
-          'Family_Member': row['name']?.text ?? '',
-          'Relation': row['relation']?.text ?? '',
-          'Age': int.tryParse(row['age']?.text ?? '') ?? 0,
-          'Gender': row['gender']?.text ?? '',
-          'Civil_Status': row['civilStatus']?.text ?? '',
-          'Education': row['education']?.text ?? '',
-          'Occupational_Skills': row['skills']?.text ?? '',
-          'Remarks': row['remarks']?.text ?? '',
-          'Code': row['code']?.text ?? '',
+          'Family_Member': name,
+          'Relation': relation,
+          'Date_of_Birth': birthdate,
+          'Age': int.tryParse(age) ?? 0,
+          'Gender': gender,
+          'Civil_Status': civilStatus,
+          'Education': education,
+          'Occupational_Skills': skills,
+          'Remarks': remarks,
+          'Code': code,
         });
       }
 
@@ -288,73 +320,129 @@ class _ShowRegistrationPageFormWidgetState
         await supabase.from('Family_Members').insert(newFamilyMembers);
       }
 
-      // ✅ Show custom success popup
       if (mounted) {
         _showSuccessDialog();
       }
     } catch (e) {
       debugPrint('❌ Error updating registration: $e');
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('❌ Error updating data: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Error updating data: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
 
-  // Custom success dialog
+  // ✅ Improved success dialog with auto navigate after 1 second
   void _showSuccessDialog() {
     showDialog(
       context: context,
-      builder: (BuildContext context) {
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        Future.delayed(const Duration(seconds: 1), () {
+          if (mounted) {
+            Navigator.of(dialogContext).pop(); // close dialog
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const WebManageResidentsPage(),
+              ),
+              (route) => false,
+            );
+          }
+        });
+
         return Dialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(24),
           ),
+          elevation: 12,
           child: Container(
-            padding: const EdgeInsets.all(24),
+            width: 420,
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 30),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
               color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  Icons.check_circle,
-                  size: 64,
-                  color: const Color(0xFF0D743D),
+                Container(
+                  width: 90,
+                  height: 90,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0D743D).withOpacity(0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.check_circle_rounded,
+                    size: 60,
+                    color: Color(0xFF0D743D),
+                  ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 20),
                 Text(
-                  "Success!",
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
+                  'Update Successful',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
                     color: const Color(0xFF0D743D),
                   ),
                 ),
-                const SizedBox(height: 12),
-                const Text(
-                  "Registration and family members have been updated successfully.",
+                const SizedBox(height: 10),
+                Text(
+                  'Registration details and family members were updated successfully.',
                   textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(
+                    fontSize: 15,
+                    color: Colors.black87,
+                    height: 1.5,
+                  ),
                 ),
                 const SizedBox(height: 24),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0D743D),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0D743D),
+                      foregroundColor: Colors.white,
+                      elevation: 3,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 12,
+                    onPressed: () {
+                      Navigator.of(dialogContext).pop();
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const WebManageResidentsPage(),
+                        ),
+                        (route) => false,
+                      );
+                    },
+                    icon: const Icon(Icons.arrow_forward_rounded),
+                    label: Text(
+                      'Go to Manage Residents',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                  child: const Text("OK"),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Redirecting automatically...',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    color: Colors.grey[600],
+                  ),
                 ),
               ],
             ),
@@ -390,19 +478,20 @@ class _ShowRegistrationPageFormWidgetState
 
       // ✅ --- HEAD IMAGE FETCH (supports file path or full URL) ---
       final headImageValue = registrationResponse['Head_Image'];
-      if (headImageValue != null && headImageValue.isNotEmpty) {
+      if (headImageValue != null && headImageValue.toString().isNotEmpty) {
         try {
-          if (headImageValue.startsWith('http')) {
-            _headImageUrl = headImageValue;
+          if (headImageValue.toString().startsWith('http')) {
+            _headImageUrl = headImageValue.toString();
             debugPrint('🖼️ Head image URL (direct): $_headImageUrl');
           } else {
             _headImageUrl = supabase.storage
                 .from('headimage')
-                .getPublicUrl(headImageValue);
+                .getPublicUrl(headImageValue.toString());
             debugPrint('🖼️ Head image URL (from storage): $_headImageUrl');
           }
         } catch (e) {
           debugPrint('❌ Error fetching head image: $e');
+          _headImageUrl = null;
         }
       } else {
         _headImageUrl = null;
@@ -410,33 +499,42 @@ class _ShowRegistrationPageFormWidgetState
       }
 
       // ✅ Populate text controllers
-      _headFirstController.text = registrationResponse['Head_Firstname'] ?? '';
+      _headFirstController.text =
+          registrationResponse['Head_Firstname']?.toString() ?? '';
       _headMiddleController.text =
-          registrationResponse['Head_Middlename'] ?? '';
-      _headSurnameController.text = registrationResponse['Head_Surname'] ?? '';
+          registrationResponse['Head_Middlename']?.toString() ?? '';
+      _headSurnameController.text =
+          registrationResponse['Head_Surname']?.toString() ?? '';
       _headAgeController.text =
           registrationResponse['Head_Age']?.toString() ?? '';
-      _headSexController.text = registrationResponse['Head_Sex'] ?? '';
+      _headSexController.text =
+          registrationResponse['Head_Sex']?.toString() ?? '';
 
-      _dobController.text = registrationResponse['Date_of_Birth'] ?? '';
-      _occupationController.text = registrationResponse['Occupation'] ?? '';
+      _dobController.text =
+          registrationResponse['Date_of_Birth']?.toString() ?? '';
+      _occupationController.text =
+          registrationResponse['Occupation']?.toString() ?? '';
       _monthlyIncomeController.text =
           registrationResponse['Monthly_Income']?.toString() ?? '';
 
-      _disasterController.text = registrationResponse['Type_of_Disaster'] ?? '';
-      _cityController.text = registrationResponse['City'] ?? '';
-      _munController.text = registrationResponse['Municipality'] ?? '';
-      _brgyController.text = registrationResponse['Barangay'] ?? '';
+      _disasterController.text =
+          registrationResponse['Type_of_Disaster']?.toString() ?? '';
+      _cityController.text = registrationResponse['City']?.toString() ?? '';
+      _munController.text =
+          registrationResponse['Municipality']?.toString() ?? '';
+      _brgyController.text = registrationResponse['Barangay']?.toString() ?? '';
       _evacBrgyController.text =
-          registrationResponse['Evacuation_Barangay'] ?? '';
+          registrationResponse['Evacuation_Barangay']?.toString() ?? '';
       _evacCenterController.text =
-          registrationResponse['Evacuation_Center'] ?? '';
-      _evacSiteController.text = registrationResponse['Site'] ?? '';
+          registrationResponse['Evacuation_Center']?.toString() ?? '';
+      _evacSiteController.text = registrationResponse['Site']?.toString() ?? '';
       _dateRegisteredController.text =
           registrationResponse['Date_Registered']?.toString() ?? 'N/A';
 
       // ✅ Civil Status Handling
-      final civilStatus = registrationResponse['Civil_Status'] ?? '';
+      final civilStatus =
+          registrationResponse['Civil_Status']?.toString() ?? '';
+
       setState(() {
         _single = civilStatus == 'Single';
         _married = civilStatus == 'Married';
@@ -451,35 +549,65 @@ class _ShowRegistrationPageFormWidgetState
         _is4PsBeneficiary = registrationResponse['4Ps_Beneficiary'] ?? false;
         _isIP = registrationResponse['IP'] ?? false;
         _ipTypeController.text =
-            registrationResponse['IP_Type_of_Ethnicity'] ?? '';
+            registrationResponse['IP_Type_of_Ethnicity']?.toString() ?? '';
       });
 
       // ✅ Populate Family Members
-      if (familyResponse != null && familyResponse.isNotEmpty) {
-        _familyRows.clear();
+      _familyRows.clear();
+
+      if (familyResponse.isNotEmpty) {
         for (var member in familyResponse) {
           _familyRows.add({
-            'name': TextEditingController(text: member['Family_Member'] ?? ''),
-            'relation': TextEditingController(text: member['Relation'] ?? ''),
+            'name': TextEditingController(
+              text: member['Family_Member']?.toString() ?? '',
+            ),
+            'relation': TextEditingController(
+              text: member['Relation']?.toString() ?? '',
+            ),
+            'birthdate': TextEditingController(
+              text: member['Date_of_Birth']?.toString() ?? '',
+            ),
             'age': TextEditingController(text: member['Age']?.toString() ?? ''),
-            'gender': TextEditingController(text: member['Gender'] ?? ''),
+            'gender': TextEditingController(
+              text: member['Gender']?.toString() ?? '',
+            ),
             'civilStatus': TextEditingController(
-              text: member['Civil_Status'] ?? '',
+              text: member['Civil_Status']?.toString() ?? '',
             ),
-            'education': TextEditingController(text: member['Education'] ?? ''),
+            'education': TextEditingController(
+              text: member['Education']?.toString() ?? '',
+            ),
             'skills': TextEditingController(
-              text: member['Occupational_Skills'] ?? '',
+              text: member['Occupational_Skills']?.toString() ?? '',
             ),
-            'remarks': TextEditingController(text: member['Remarks'] ?? ''),
+            'remarks': TextEditingController(
+              text: member['Remarks']?.toString() ?? '',
+            ),
             'code': TextEditingController(
-              text: member['Code'] ?? '',
-            ), // ✅ new column
+              text: member['Code']?.toString() ?? '',
+            ),
           });
         }
+      } else {
+        // ✅ optional: keep at least 1 empty row if no family members found
+        _familyRows.add({
+          'name': TextEditingController(),
+          'relation': TextEditingController(),
+          'birthdate': TextEditingController(),
+          'age': TextEditingController(),
+          'gender': TextEditingController(),
+          'civilStatus': TextEditingController(),
+          'education': TextEditingController(),
+          'skills': TextEditingController(),
+          'remarks': TextEditingController(),
+          'code': TextEditingController(),
+        });
       }
 
       // ✅ Refresh UI
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {});
+      }
     } catch (e) {
       debugPrint('❌ Error fetching registration details: $e');
       ScaffoldMessenger.of(
@@ -1508,7 +1636,6 @@ class _ShowRegistrationPageFormWidgetState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Header
         Padding(
           padding: const EdgeInsets.only(bottom: 12.0),
           child: Column(
@@ -1536,24 +1663,20 @@ class _ShowRegistrationPageFormWidgetState
             ),
             child: Table(
               border: TableBorder.all(color: Colors.black54, width: 1),
-
-              // 🔥 UPDATED WIDTHS — DELETE COLUMN WIDER
               columnWidths: const {
-                0: FlexColumnWidth(2.2), // Name
-                1: FlexColumnWidth(2.2), // Relation
-                2: FlexColumnWidth(2.8), // DOB
-                3: FlexColumnWidth(1), // Age
-                4: FlexColumnWidth(1.4), // Gender
-                5: FlexColumnWidth(1.5), // Civil Status
-                6: FlexColumnWidth(1.5), // Education
-                7: FlexColumnWidth(2.5), // Skills
-                8: FlexColumnWidth(2.5), // Remarks
-                9: FlexColumnWidth(1.2), // Code
-                10: FlexColumnWidth(1.3), // 🔥 WIDER DELETE COLUMN
+                0: FlexColumnWidth(2.2),
+                1: FlexColumnWidth(2.2),
+                2: FlexColumnWidth(2.8),
+                3: FlexColumnWidth(1),
+                4: FlexColumnWidth(1.4),
+                5: FlexColumnWidth(1.5),
+                6: FlexColumnWidth(1.5),
+                7: FlexColumnWidth(2.5),
+                8: FlexColumnWidth(2.5),
+                9: FlexColumnWidth(1.2),
+                10: FlexColumnWidth(1.3),
               },
-
               children: [
-                // Header Row
                 TableRow(
                   decoration: BoxDecoration(color: Colors.grey[200]),
                   children: [
@@ -1571,31 +1694,45 @@ class _ShowRegistrationPageFormWidgetState
                   ],
                 ),
 
-                // Data Rows
                 for (int i = 0; i < _familyRows.length; i++)
                   TableRow(
                     children: [
-                      _buildTableTextField(_familyRows[i]['name']!),
-                      _buildTableTextField(_familyRows[i]['relation']!),
-                      _buildDatePickerField(
-                        _familyRows[i]['birthdate']!,
-                        _familyRows[i]['age']!,
+                      _buildTableTextField(
+                        _familyRows[i]['name'] ?? TextEditingController(),
                       ),
                       _buildTableTextField(
-                        _familyRows[i]['age']!,
+                        _familyRows[i]['relation'] ?? TextEditingController(),
+                      ),
+                      _buildDatePickerField(
+                        _familyRows[i]['birthdate'] ?? TextEditingController(),
+                        _familyRows[i]['age'] ?? TextEditingController(),
+                      ),
+                      _buildTableTextField(
+                        _familyRows[i]['age'] ?? TextEditingController(),
                         disabled: true,
                       ),
-                      _buildTableTextField(_familyRows[i]['gender']!),
-                      _buildTableTextField(_familyRows[i]['civilStatus']!),
-                      _buildTableTextField(_familyRows[i]['education']!),
-                      _buildTableTextField(_familyRows[i]['skills']!),
-                      _buildTableTextField(_familyRows[i]['remarks']!),
-                      _buildTableTextField(_familyRows[i]['code']!),
-
-                      // 🔥 UPDATED DELETE CELL (MORE SPACE)
+                      _buildTableTextField(
+                        _familyRows[i]['gender'] ?? TextEditingController(),
+                      ),
+                      _buildTableTextField(
+                        _familyRows[i]['civilStatus'] ??
+                            TextEditingController(),
+                      ),
+                      _buildTableTextField(
+                        _familyRows[i]['education'] ?? TextEditingController(),
+                      ),
+                      _buildTableTextField(
+                        _familyRows[i]['skills'] ?? TextEditingController(),
+                      ),
+                      _buildTableTextField(
+                        _familyRows[i]['remarks'] ?? TextEditingController(),
+                      ),
+                      _buildTableTextField(
+                        _familyRows[i]['code'] ?? TextEditingController(),
+                      ),
                       Padding(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 10, // wider
+                          horizontal: 10,
                           vertical: 8,
                         ),
                         child: IconButton(
@@ -1617,7 +1754,6 @@ class _ShowRegistrationPageFormWidgetState
 
         const SizedBox(height: 16),
 
-        // Add Row Button
         ElevatedButton.icon(
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF0D743D),
@@ -1692,14 +1828,13 @@ class _ShowRegistrationPageFormWidgetState
     TextEditingController birthController,
     TextEditingController ageController,
   ) {
-    bool hasSelectedDate = birthController.text.isNotEmpty;
+    final bool hasSelectedDate = birthController.text.isNotEmpty;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // SHOW LABEL ONLY WHEN NO DATE SELECTED
           if (!hasSelectedDate)
             Text(
               "Select your birthday",
@@ -1713,7 +1848,7 @@ class _ShowRegistrationPageFormWidgetState
 
           GestureDetector(
             onTap: () async {
-              DateTime now = DateTime.now();
+              final DateTime now = DateTime.now();
 
               DateTime? pickedDate = await showDatePicker(
                 context: context,

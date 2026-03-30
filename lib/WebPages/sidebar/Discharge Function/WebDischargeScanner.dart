@@ -8,10 +8,9 @@ import 'package:evacutaion/WebPages/sidebar/Discharge%20Function/Discharge_Santa
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
 import 'package:evacutaion/WebPages/WebMainDashboard.dart';
 import 'package:evacutaion/WebPages/sidebar/ViewQRcode/WebManageQr.dart';
-import 'package:evacutaion/WebPages/sidebar/WebManageResidents.dart';
+import 'package:evacutaion/WebPages/sidebar/WebEditResident/WebManageResidents.dart';
 import 'package:evacutaion/WebPages/sidebar/Report/Report.dart';
 import 'package:evacutaion/WebPages/sidebar/Request/Request.dart';
 
@@ -313,10 +312,19 @@ class _WebDischargeDashboardPageState extends State<WebDischargeDashboardPage> {
     if (!mounted) return;
     final supabase = Supabase.instance.client;
 
+    bool _toBool(dynamic value) {
+      if (value is bool) return value;
+      if (value is int) return value == 1;
+      if (value is String) {
+        final v = value.trim().toLowerCase();
+        return v == 'true' || v == '1' || v == 'yes';
+      }
+      return false;
+    }
+
     try {
       // STEP 1: Fetch all residents from Evacuation_A and Evacuation_B
       final evacAData = await supabase.from('Evacuation_A').select('*');
-
       final evacBData = await supabase.from('Evacuation_B').select('*');
 
       final combined = [...evacAData, ...evacBData];
@@ -409,20 +417,47 @@ class _WebDischargeDashboardPageState extends State<WebDischargeDashboardPage> {
         return;
       }
 
-      // STEP 2: Group residents by UID and collect their details
-      final Map<String, dynamic> dischargeData = {};
-      final now = DateTime.now().toUtc().toIso8601String();
+      final now = DateTime.now().toIso8601String();
+
+      // Build a map of UID -> Time_Deployed from evacuation records
+      final Map<String, String> timeDeployedMap = {};
+
+      // Build a map of UID -> 4Ps_Families from HEAD OF FAMILY rows only
+      final Map<String, bool> fourPsFamiliesMap = {};
+
+      for (var resident in combined) {
+        final uid = resident['UID']?.toString() ?? '';
+        if (uid.isEmpty) continue;
+
+        timeDeployedMap.putIfAbsent(
+          uid,
+          () => (resident['Time_Deployed'] ?? '').toString(),
+        );
+
+        final relation = (resident['Relation'] ?? '').toString().trim();
+        if (relation == 'Head of Family') {
+          final raw4ps = resident['4Ps_Families'];
+          fourPsFamiliesMap[uid] = _toBool(raw4ps);
+
+          debugPrint(
+            'UID: $uid | Head row raw 4Ps_Families: $raw4ps | Parsed: ${fourPsFamiliesMap[uid]}',
+          );
+        }
+      }
 
       // Get unique UIDs
       final Set<String> uniqueUIDs = {};
       for (var resident in combined) {
-        uniqueUIDs.add(resident['UID'].toString());
+        final uid = resident['UID']?.toString() ?? '';
+        if (uid.isNotEmpty) {
+          uniqueUIDs.add(uid);
+        }
       }
 
       debugPrint('✅ Found ${uniqueUIDs.length} unique residents to discharge');
 
       // STEP 3: For each UID, fetch registration and family details
-      final List<Map<String, Object>> dischargeInserts = [];
+      final List<Map<String, Object?>> dischargeInserts = [];
 
       for (var uid in uniqueUIDs) {
         try {
@@ -440,6 +475,13 @@ class _WebDischargeDashboardPageState extends State<WebDischargeDashboardPage> {
               .eq('UID', uid);
 
           final regId = registrationData?['Registration_ID'].toString() ?? uid;
+          final timeDeployed = timeDeployedMap[uid] ?? '';
+          final headBarangay = (registrationData?['Barangay'] ?? '').toString();
+          final fourPsFamilies = fourPsFamiliesMap[uid] ?? false;
+
+          debugPrint(
+            'Preparing discharge for UID: $uid | 4Ps_Families: $fourPsFamilies',
+          );
 
           // Build head of family entry from registration data
           if (registrationData != null) {
@@ -447,7 +489,7 @@ class _WebDischargeDashboardPageState extends State<WebDischargeDashboardPage> {
                 '${registrationData['Head_Surname'] ?? ''} ${registrationData['Head_Firstname'] ?? ''} ${registrationData['Head_Middlename'] ?? ''}'
                     .trim();
 
-            final headEntry = <String, Object>{
+            final headEntry = <String, Object?>{
               'UID': uid,
               'Registration_ID': regId,
               'Family_Member': headFullName,
@@ -466,10 +508,12 @@ class _WebDischargeDashboardPageState extends State<WebDischargeDashboardPage> {
               'Head_Monthly_Income': registrationData['Monthly_Income'] ?? 0.0,
               'City': registrationData['City'] ?? '',
               'Municipality': registrationData['Municipality'] ?? '',
-              'Barangay': registrationData['Barangay'] ?? '',
+              'Barangay': headBarangay,
               'Site': registrationData['Site'] ?? '',
               'Date_Transferred': now,
+              'Time_Deployed': timeDeployed,
               'Time_Discharge': now,
+              '4Ps_Families': fourPsFamilies,
             };
             dischargeInserts.add(headEntry);
           }
@@ -477,7 +521,7 @@ class _WebDischargeDashboardPageState extends State<WebDischargeDashboardPage> {
           // Build family member entries
           if (familyData != null && familyData.isNotEmpty) {
             for (var member in familyData) {
-              final familyEntry = <String, Object>{
+              final familyEntry = <String, Object?>{
                 'UID': uid,
                 'Registration_ID': regId,
                 'Family_Member': member['Family_Member'] ?? '',
@@ -489,9 +533,12 @@ class _WebDischargeDashboardPageState extends State<WebDischargeDashboardPage> {
                 'Occupational_Skills': member['Occupational_Skills'] ?? '',
                 'Remarks': member['Remarks'] ?? '',
                 'Code': member['Code'] ?? '',
+                'Barangay': headBarangay,
                 'Site': registrationData?['Site'] ?? '',
                 'Date_Transferred': now,
+                'Time_Deployed': timeDeployed,
                 'Time_Discharge': now,
+                '4Ps_Families': fourPsFamilies,
               };
               dischargeInserts.add(familyEntry);
             }
