@@ -15,6 +15,8 @@ class WebSantaHighSchoolResidentsPage extends StatefulWidget {
 
 class _WebSantaHighSchoolResidentsPageState
     extends State<WebSantaHighSchoolResidentsPage> {
+  static const String currentSiteName = 'Santa High School';
+
   List<Map<String, dynamic>> residents = [];
   bool isLoading = true;
 
@@ -31,30 +33,34 @@ class _WebSantaHighSchoolResidentsPageState
     _fetchResidents();
   }
 
-  // ================= FETCH RESIDENTS =================
   Future<void> _fetchResidents() async {
+    if (!mounted) return;
+
+    setState(() => isLoading = true);
+
     final supabase = Supabase.instance.client;
 
     try {
       final evacA = await supabase
           .from('Evacuation_A')
           .select()
-          .eq('Site', 'Santa High School');
+          .eq('Site', currentSiteName);
 
       final evacB = await supabase
           .from('Evacuation_B')
           .select()
-          .eq('Site', 'Santa High School');
+          .eq('Site', currentSiteName);
 
       final combined = [...evacA, ...evacB];
 
       final Map<String, Map<String, dynamic>> headMap = {};
       final Map<String, List<String>> familyMap = {};
+      final Map<String, List<String>> nextFamilyMembersCache = {};
 
       for (var resident in combined) {
         final regId = resident['Registration_ID'].toString();
-        final relation = resident['Relation'].toString();
-        final name = resident['Family_Member'].toString();
+        final relation = (resident['Relation'] ?? '').toString();
+        final name = (resident['Family_Member'] ?? '').toString();
 
         if (relation == 'Head of Family') {
           headMap[regId] = resident;
@@ -67,23 +73,34 @@ class _WebSantaHighSchoolResidentsPageState
       for (var entry in headMap.entries) {
         final regId = entry.key;
         headsList.add(entry.value);
-        familyMembersCache[regId] = familyMap[regId] ?? [];
-
-        // Optional: fetch full registration & family members for discharge logic
-        _fetchRegistrationDetails(entry.value['UID'].toString(), regId);
+        nextFamilyMembersCache[regId] = familyMap[regId] ?? [];
       }
+
+      if (!mounted) return;
 
       setState(() {
         residents = headsList;
+        familyMembersCache = nextFamilyMembersCache;
         isLoading = false;
       });
-    } catch (e) {
+
+      for (var entry in headMap.entries) {
+        _fetchRegistrationDetails(entry.value['UID'].toString(), entry.key);
+      }
+    } catch (e, st) {
       debugPrint('❌ Error fetching residents: $e');
+      debugPrint('$st');
+
+      if (!mounted) return;
+
       setState(() => isLoading = false);
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error fetching residents: $e')));
     }
   }
 
-  // ================= FETCH REGISTRATION DETAILS (CACHED) =================
   Future<void> _fetchRegistrationDetails(String uid, String regId) async {
     try {
       final supabase = Supabase.instance.client;
@@ -99,24 +116,31 @@ class _WebSantaHighSchoolResidentsPageState
           .select('*')
           .eq('UID', uid);
 
-      if (registrationResponse != null) {
-        registrationDetailsCache[regId] = {
-          'registration': registrationResponse,
-          'family': familyResponse,
-        };
-        debugPrint('✅ Registration data cached for $regId');
+      if (registrationResponse != null && mounted) {
+        setState(() {
+          registrationDetailsCache[regId] = {
+            'registration': registrationResponse,
+            'family': familyResponse,
+          };
+        });
       }
     } catch (e) {
       debugPrint('❌ Error fetching registration details for $regId: $e');
     }
   }
 
-  // ================= SELECTION HANDLERS =================
-  void _toggle(int index) =>
-      setState(() => expanded[index] = !(expanded[index] ?? false));
-  void _toggleSelect(int index) =>
-      setState(() => selected[index] = !(selected[index] ?? false));
+  void _toggle(int index) {
+    if (!mounted) return;
+    setState(() => expanded[index] = !(expanded[index] ?? false));
+  }
+
+  void _toggleSelect(int index) {
+    if (!mounted) return;
+    setState(() => selected[index] = !(selected[index] ?? false));
+  }
+
   void _toggleSelectAll() {
+    if (!mounted) return;
     setState(() {
       allSelected = !allSelected;
       for (int i = 0; i < residents.length; i++) {
@@ -125,7 +149,251 @@ class _WebSantaHighSchoolResidentsPageState
     });
   }
 
-  // ================= DISCHARGE SELECTED RESIDENTS =================
+  Future<List<Map<String, dynamic>>> _fetchAllEvacRowsByUid(String uid) async {
+    final supabase = Supabase.instance.client;
+
+    final evacA = await supabase
+        .from('Evacuation_A')
+        .select('*')
+        .eq('UID', uid);
+    final evacB = await supabase
+        .from('Evacuation_B')
+        .select('*')
+        .eq('UID', uid);
+
+    return [
+      ...List<Map<String, dynamic>>.from(evacA),
+      ...List<Map<String, dynamic>>.from(evacB),
+    ];
+  }
+
+  List<String> _selectedResidentNames(
+    List<Map<String, dynamic>> selectedResidents,
+  ) {
+    return selectedResidents
+        .map((e) => (e['Family_Member'] ?? 'Resident').toString().trim())
+        .where((e) => e.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  Widget _buildNameChips(
+    List<String> names, {
+    Color? bgColor,
+    Color? textColor,
+  }) {
+    final uniqueNames = names.toSet().toList();
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: uniqueNames.map((name) {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          decoration: BoxDecoration(
+            color: bgColor ?? const Color(0xFFE8F5EC),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: (textColor ?? const Color(0xFF0D743D)).withOpacity(0.10),
+            ),
+          ),
+          child: Text(
+            name,
+            style: GoogleFonts.poppins(
+              fontSize: 12.3,
+              fontWeight: FontWeight.w500,
+              color: textColor ?? const Color(0xFF0D743D),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Future<Map<String, List<String>>> _getSplitFamilyWarnings(
+    List<Map<String, dynamic>> selectedResidents,
+  ) async {
+    final Map<String, List<String>> splitMap = {};
+
+    for (final resident in selectedResidents) {
+      final uid = resident['UID'].toString();
+      final familyName = (resident['Family_Member'] ?? 'Resident').toString();
+
+      try {
+        final allRows = await _fetchAllEvacRowsByUid(uid);
+
+        final otherSites = allRows
+            .map((row) => (row['Site'] ?? '').toString().trim())
+            .where((site) => site.isNotEmpty && site != currentSiteName)
+            .toSet()
+            .toList();
+
+        if (otherSites.isNotEmpty) {
+          splitMap[familyName] = otherSites;
+        }
+      } catch (e) {
+        debugPrint('❌ Error checking split family for UID $uid: $e');
+      }
+    }
+
+    return splitMap;
+  }
+
+  Future<bool?> _showSplitFamilyWarningDialog(
+    Map<String, List<String>> splitMap,
+  ) async {
+    if (!mounted) return false;
+
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 500),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.warning_amber_rounded,
+                          color: Colors.orange,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Split Family Detected',
+                          style: GoogleFonts.poppins(
+                            fontSize: 16.5,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Some selected families still have members in another site or RHU. Only the members currently in $currentSiteName will be discharged.',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12.8,
+                        height: 1.45,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    constraints: const BoxConstraints(maxHeight: 145),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: splitMap.entries.map((entry) {
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 7),
+                            child: RichText(
+                              text: TextSpan(
+                                style: GoogleFonts.poppins(
+                                  fontSize: 12.5,
+                                  color: Colors.black87,
+                                  height: 1.4,
+                                ),
+                                children: [
+                                  TextSpan(
+                                    text: '${entry.key}: ',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  TextSpan(text: entry.value.join(', ')),
+                                ],
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.grey[300],
+                            foregroundColor: Colors.black87,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(vertical: 11),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          child: Text(
+                            'Cancel',
+                            style: GoogleFonts.poppins(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12.8,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF0D743D),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(vertical: 11),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          child: Text(
+                            'Continue',
+                            style: GoogleFonts.poppins(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12.8,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _dischargeSelectedResidents() async {
     if (!mounted) return;
 
@@ -143,178 +411,225 @@ class _WebSantaHighSchoolResidentsPageState
       return;
     }
 
-    // Show confirmation dialog
-    final confirmed = await _showConfirmationDialog(
-      selectedResidents.length,
-      selectedResidents.first['Family_Member']?.toString() ?? 'Resident',
-    );
+    final splitMap = await _getSplitFamilyWarnings(selectedResidents);
+
+    if (!mounted) return;
+
+    if (splitMap.isNotEmpty) {
+      final proceed = await _showSplitFamilyWarningDialog(splitMap);
+      if (proceed != true) return;
+    }
+
+    final selectedNames = _selectedResidentNames(selectedResidents);
+    final confirmed = await _showConfirmationDialog(selectedNames);
 
     if (confirmed != true) return;
 
-    // Discharge each selected resident
+    final List<String> dischargedNames = [];
+
     for (var resident in selectedResidents) {
       final uid = resident['UID'].toString();
       final regId = resident['Registration_ID'].toString();
-      await _dischargeResidents(regId, uid);
+      final headName = (resident['Family_Member'] ?? 'Resident')
+          .toString()
+          .trim();
+
+      if (headName.isNotEmpty && !dischargedNames.contains(headName)) {
+        dischargedNames.add(headName);
+      }
+
+      await _dischargeResidents(regId, uid, dischargedNames);
     }
 
-    // Refresh list and clear selection
+    if (!mounted) return;
+
     await _fetchResidents();
-    if (mounted) {
-      setState(() {
-        selected.clear();
-        allSelected = false;
-      });
-    }
+
+    if (!mounted) return;
+
+    setState(() {
+      selected.clear();
+      allSelected = false;
+    });
   }
 
-  // ================= CONFIRMATION DIALOG =================
-  Future<bool?> _showConfirmationDialog(int count, String residentName) async {
+  Future<bool?> _showConfirmationDialog(List<String> selectedNames) async {
+    if (!mounted) return false;
+
     return showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (BuildContext ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         elevation: 8,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 28),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Colors.white, Colors.grey[50]!],
-            ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Icon
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.orange[100],
-                ),
-                child: Icon(
-                  Icons.warning_rounded,
-                  size: 40,
-                  color: Colors.orange[700],
-                ),
-              ),
-              const SizedBox(height: 20),
-              // Title
-              Text(
-                'Confirm Discharge',
-                style: GoogleFonts.poppins(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black87,
-                ),
-              ),
-              const SizedBox(height: 16),
-              // Message
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Column(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
                   children: [
-                    RichText(
-                      textAlign: TextAlign.center,
-                      text: TextSpan(
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: Colors.orange[100],
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        Icons.warning_rounded,
+                        size: 22,
+                        color: Colors.orange[700],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Confirm Discharge',
                         style: GoogleFonts.poppins(
-                          fontSize: 15,
+                          fontSize: 16.5,
+                          fontWeight: FontWeight.w700,
                           color: Colors.black87,
-                          height: 1.5,
                         ),
-                        children: [
-                          const TextSpan(
-                            text: 'Are you sure you want to discharge ',
-                          ),
-                          TextSpan(
-                            text: count == 1
-                                ? residentName
-                                : '$count resident${count > 1 ? 's' : ''}',
-                            style: const TextSpan(
-                              style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF0D743D),
-                              ),
-                            ).style,
-                          ),
-                          const TextSpan(
-                            text: '?\n\nThis action cannot be undone.',
-                          ),
-                        ],
                       ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 28),
-              // Buttons
-              Row(
-                children: [
-                  // No Button
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () => Navigator.pop(ctx, false),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.grey[300],
-                        foregroundColor: Colors.black87,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'The following selected residents will be discharged from $currentSiteName.',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12.8,
+                      color: Colors.black87,
+                      height: 1.45,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  constraints: const BoxConstraints(maxHeight: 140),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF6F8F7),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: SingleChildScrollView(
+                    child: _buildNameChips(selectedNames),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Only members currently assigned to this site will be discharged.',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12.3,
+                      color: Colors.grey[700],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.grey[300],
+                          foregroundColor: Colors.black87,
+                          padding: const EdgeInsets.symmetric(vertical: 11),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          elevation: 0,
                         ),
-                        elevation: 0,
-                      ),
-                      child: Text(
-                        'No, Cancel',
-                        style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
+                        child: Text(
+                          'Cancel',
+                          style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12.8,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  // Yes Button
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () => Navigator.pop(ctx, true),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0D743D),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF0D743D),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 11),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          elevation: 1,
                         ),
-                        elevation: 2,
-                      ),
-                      child: Text(
-                        'Yes, Discharge',
-                        style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
+                        child: Text(
+                          'Confirm',
+                          style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12.8,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Future<void> _dischargeResidents(String registrationId, String uid) async {
+  Future<void> _dischargeResidents(
+    String registrationId,
+    String uid,
+    List<String> dischargedNames,
+  ) async {
     if (!mounted) return;
     final supabase = Supabase.instance.client;
 
-    final now = DateTime.now().toIso8601String();
+    final nowDateTime = DateTime.now();
+    final now = nowDateTime.toIso8601String();
 
-    bool _toBool(dynamic value) {
+    String formatDateTime(DateTime dateTime) {
+      final List<String> months = [
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December',
+      ];
+
+      final month = months[dateTime.month - 1];
+      final day = dateTime.day;
+      final year = dateTime.year;
+
+      final hour12 = dateTime.hour % 12 == 0 ? 12 : dateTime.hour % 12;
+      final minute = dateTime.minute.toString().padLeft(2, '0');
+      final period = dateTime.hour >= 12 ? 'PM' : 'AM';
+
+      return '$month $day, $year | $hour12:$minute $period';
+    }
+
+    final formattedTimeDischarge = formatDateTime(nowDateTime);
+
+    bool toBool(dynamic value) {
       if (value is bool) return value;
       if (value is int) return value == 1;
       if (value is String) {
@@ -324,116 +639,132 @@ class _WebSantaHighSchoolResidentsPageState
       return false;
     }
 
-    String _normalizeName(String value) {
+    String normalizeName(String value) {
       return value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
     }
 
-    // Step 1: Check if residents are currently in Evacuation_A or Evacuation_B
-    final evacAData = await supabase
-        .from('Evacuation_A')
-        .select('*')
-        .eq('UID', uid)
-        .limit(1)
-        .maybeSingle();
+    List<Map<String, dynamic>> currentSiteRows = [];
+    List<Map<String, dynamic>> allRows = [];
 
-    final evacBData = await supabase
-        .from('Evacuation_B')
-        .select('*')
-        .eq('UID', uid)
-        .limit(1)
-        .maybeSingle();
+    try {
+      final evacAAll = await supabase
+          .from('Evacuation_A')
+          .select('*')
+          .eq('UID', uid);
+      final evacBAll = await supabase
+          .from('Evacuation_B')
+          .select('*')
+          .eq('UID', uid);
 
-    if (evacAData == null && evacBData == null) {
-      if (mounted) {
-        await showDialog<void>(
-          context: context,
-          barrierDismissible: false,
-          builder: (dCtx) {
-            return Dialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  vertical: 30,
-                  horizontal: 25,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 85,
-                      height: 85,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.orange.withOpacity(0.15),
-                      ),
-                      child: const Center(
-                        child: Icon(
-                          Icons.warning,
-                          color: Colors.orange,
-                          size: 65,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    Text(
-                      'Resident Already Discharged',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.poppins(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      'This resident has already been discharged.',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.poppins(
-                        fontSize: 15,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 25),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.of(dCtx).pop();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          backgroundColor: Colors.orange,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: Text(
-                          'OK',
-                          style: GoogleFonts.poppins(
-                            fontSize: 16,
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      }
+      allRows = [
+        ...List<Map<String, dynamic>>.from(evacAAll),
+        ...List<Map<String, dynamic>>.from(evacBAll),
+      ];
+
+      currentSiteRows = allRows
+          .where(
+            (row) => (row['Site'] ?? '').toString().trim() == currentSiteName,
+          )
+          .toList();
+    } catch (e, st) {
+      debugPrint('❌ Error fetching evacuation rows: $e');
+      debugPrint('$st');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ Error fetching evacuation rows: $e')),
+      );
       return;
     }
 
-    // Get original Time_Deployed from evacuation table
-    final String timeDeployed =
-        (evacAData?['Time_Deployed'] ?? evacBData?['Time_Deployed'] ?? '')
-            .toString();
+    if (currentSiteRows.isEmpty) {
+      if (!mounted) return;
 
-    // Get 4Ps_Families specifically from the HEAD OF FAMILY row
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dCtx) {
+          return Dialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.warning,
+                          color: Colors.orange,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'No Members In This Site',
+                          style: GoogleFonts.poppins(
+                            fontSize: 16.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'This family has no members currently assigned to $currentSiteName.',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12.8,
+                        color: Colors.black87,
+                        height: 1.45,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.of(dCtx).pop(),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 11),
+                        backgroundColor: Colors.orange,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: Text(
+                        'OK',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12.8,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+      return;
+    }
+
+    final String timeDeployed = (currentSiteRows.first['Time_Deployed'] ?? '')
+        .toString();
+
     final evacAHead = await supabase
         .from('Evacuation_A')
         .select('4Ps_Families')
@@ -450,44 +781,8 @@ class _WebSantaHighSchoolResidentsPageState
 
     final dynamic rawA = evacAHead?['4Ps_Families'];
     final dynamic rawB = evacBHead?['4Ps_Families'];
+    final bool fourPsFamilies = toBool(rawA) || toBool(rawB);
 
-    final bool fourPsFamilies = _toBool(rawA) || _toBool(rawB);
-
-    debugPrint('Selected UID: $uid');
-    debugPrint('Evacuation_A Head 4Ps_Families raw: $rawA');
-    debugPrint('Evacuation_B Head 4Ps_Families raw: $rawB');
-    debugPrint('Final 4Ps_Families to store: $fourPsFamilies');
-
-    // NEW: get all evacuation rows so every member keeps the real Site
-    List<Map<String, dynamic>> evacARows = [];
-    List<Map<String, dynamic>> evacBRows = [];
-
-    try {
-      final evacAResponse = await supabase
-          .from('Evacuation_A')
-          .select('*')
-          .eq('UID', uid);
-
-      final evacBResponse = await supabase
-          .from('Evacuation_B')
-          .select('*')
-          .eq('UID', uid);
-
-      evacARows = List<Map<String, dynamic>>.from(evacAResponse);
-      evacBRows = List<Map<String, dynamic>>.from(evacBResponse);
-    } catch (e) {
-      debugPrint('❌ Error fetching evacuation rows: $e');
-    }
-
-    final Map<String, Map<String, dynamic>> evacRowByName = {};
-
-    for (final row in [...evacARows, ...evacBRows]) {
-      final name = (row['Family_Member'] ?? '').toString().trim();
-      if (name.isEmpty) continue;
-      evacRowByName[_normalizeName(name)] = row;
-    }
-
-    // Step 2: Fetch registration details and family members
     Map<String, dynamic>? registrationData;
     List<Map<String, dynamic>> familyMembers = [];
 
@@ -503,133 +798,130 @@ class _WebSantaHighSchoolResidentsPageState
           .select('*')
           .eq('UID', uid);
 
-      if (familyResponse != null) {
-        familyMembers = List<Map<String, dynamic>>.from(familyResponse);
-      }
-
-      debugPrint(
-        '✅ Fetched registration data and ${familyMembers.length} family members for UID: $uid',
-      );
-    } catch (e) {
+      familyMembers = List<Map<String, dynamic>>.from(familyResponse);
+    } catch (e, st) {
       debugPrint('❌ Error fetching registration details: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ Error fetching resident details: $e')),
-        );
-      }
+      debugPrint('$st');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ Error fetching resident details: $e')),
+      );
       return;
     }
 
     final String headBarangay = (registrationData?['Barangay'] ?? '')
         .toString();
 
-    // Step 3: Delete existing entries from Evacuation_A and Evacuation_B
-    try {
-      await supabase.from('Evacuation_A').delete().eq('UID', uid);
-      await supabase.from('Evacuation_B').delete().eq('UID', uid);
-      debugPrint(
-        '🧹 Removed residents from Evacuation_A and Evacuation_B for UID: $uid',
-      );
-    } catch (e) {
-      debugPrint('⚠️ Error deleting from Evacuation tables: $e');
+    final Map<String, Map<String, dynamic>> familyMemberByName = {};
+    for (final member in familyMembers) {
+      final memberName = (member['Family_Member'] ?? '').toString().trim();
+      if (memberName.isNotEmpty) {
+        familyMemberByName[normalizeName(memberName)] = member;
+      }
     }
 
-    // Step 4: Build discharge entries
     final List<Map<String, Object?>> dischargeInserts = [];
 
-    // Build head of family entry from registration data
-    if (registrationData != null) {
-      final headFullName =
-          '${registrationData['Head_Surname'] ?? ''} ${registrationData['Head_Firstname'] ?? ''} ${registrationData['Head_Middlename'] ?? ''}'
-              .trim();
+    for (final row in currentSiteRows) {
+      final relation = (row['Relation'] ?? '').toString();
+      final memberName = (row['Family_Member'] ?? '').toString().trim();
+      final matchedFamilyData = familyMemberByName[normalizeName(memberName)];
 
-      final headEvacRow = evacRowByName[_normalizeName(headFullName)];
-      final headActualSite =
-          (headEvacRow?['Site'] ?? registrationData['Site'] ?? '').toString();
-
-      final headEntry = <String, Object?>{
-        'UID': uid,
-        'Registration_ID': registrationId,
-        'Family_Member': headFullName,
-        'Relation': 'Head of Family',
-        'Age': registrationData['Head_Age'] ?? 0,
-        'Gender': registrationData['Head_Sex'] ?? '',
-        'Civil_Status': registrationData['Civil_Status'] ?? '',
-        'Education': registrationData['Education'] ?? '',
-        'Occupational_Skills': registrationData['Occupation'] ?? '',
-        'Remarks': 'Head of family entry',
-        'Code': '',
-        'Head_Surname': registrationData['Head_Surname'] ?? '',
-        'Head_Firstname': registrationData['Head_Firstname'] ?? '',
-        'Head_Middlename': registrationData['Head_Middlename'] ?? '',
-        'Head_Occupation': registrationData['Occupation'] ?? '',
-        'Head_Monthly_Income': registrationData['Monthly_Income'] ?? 0.0,
-        'City': registrationData['City'] ?? '',
-        'Municipality': registrationData['Municipality'] ?? '',
-        'Barangay': headBarangay,
-        'Site': headActualSite,
-        'Date_Transferred': now,
-        'Time_Deployed': timeDeployed,
-        'Time_Discharge': now,
-        '4Ps_Families': fourPsFamilies,
-      };
-      dischargeInserts.add(headEntry);
+      if (relation == 'Head of Family') {
+        final headEntry = <String, Object?>{
+          'UID': uid,
+          'Registration_ID': registrationId,
+          'Family_Member': memberName,
+          'Relation': 'Head of Family',
+          'Age': row['Age'] ?? registrationData?['Head_Age'] ?? 0,
+          'Gender': row['Gender'] ?? registrationData?['Head_Sex'] ?? '',
+          'Civil_Status':
+              row['Civil_Status'] ?? registrationData?['Civil_Status'] ?? '',
+          'Education': row['Education'] ?? registrationData?['Education'] ?? '',
+          'Occupational_Skills':
+              row['Occupational_Skills'] ??
+              registrationData?['Occupation'] ??
+              '',
+          'Remarks': row['Remarks'] ?? 'Head of family entry',
+          'Code': row['Code'] ?? '',
+          'Head_Surname': registrationData?['Head_Surname'] ?? '',
+          'Head_Firstname': registrationData?['Head_Firstname'] ?? '',
+          'Head_Middlename': registrationData?['Head_Middlename'] ?? '',
+          'Head_Occupation': registrationData?['Occupation'] ?? '',
+          'Head_Monthly_Income': registrationData?['Monthly_Income'] ?? 0.0,
+          'City': registrationData?['City'] ?? '',
+          'Municipality': registrationData?['Municipality'] ?? '',
+          'Barangay': headBarangay,
+          'Site': row['Site'] ?? currentSiteName,
+          'BirthDate': row['Date_of_Birth'],
+          'Date_Transferred': now,
+          'Time_Deployed': timeDeployed,
+          'Time_Discharge': formattedTimeDischarge,
+          '4Ps_Families': fourPsFamilies,
+        };
+        dischargeInserts.add(headEntry);
+      } else {
+        final familyEntry = <String, Object?>{
+          'UID': uid,
+          'Registration_ID': registrationId,
+          'Family_Member': memberName,
+          'Relation': relation,
+          'Age': row['Age'] ?? matchedFamilyData?['Age'] ?? 0,
+          'Gender': row['Gender'] ?? matchedFamilyData?['Gender'] ?? '',
+          'Civil_Status':
+              row['Civil_Status'] ?? matchedFamilyData?['Civil_Status'] ?? '',
+          'Education':
+              row['Education'] ?? matchedFamilyData?['Education'] ?? '',
+          'Occupational_Skills':
+              row['Occupational_Skills'] ??
+              matchedFamilyData?['Occupational_Skills'] ??
+              '',
+          'Remarks': row['Remarks'] ?? matchedFamilyData?['Remarks'] ?? '',
+          'Code': row['Code'] ?? matchedFamilyData?['Code'] ?? '',
+          'Barangay': headBarangay,
+          'Site': row['Site'] ?? currentSiteName,
+          'BirthDate': row['Date_of_Birth'],
+          'Date_Transferred': now,
+          'Time_Deployed': timeDeployed,
+          'Time_Discharge': formattedTimeDischarge,
+          '4Ps_Families': fourPsFamilies,
+        };
+        dischargeInserts.add(familyEntry);
+      }
     }
 
-    // Build family member entries with actual per-row Site
-    for (var member in familyMembers) {
-      final memberName = (member['Family_Member'] ?? '').toString().trim();
-      final memberEvacRow = evacRowByName[_normalizeName(memberName)];
-      final actualSite =
-          (memberEvacRow?['Site'] ?? registrationData?['Site'] ?? '')
-              .toString();
-
-      final familyEntry = <String, Object?>{
-        'UID': uid,
-        'Registration_ID': registrationId,
-        'Family_Member': member['Family_Member'] ?? '',
-        'Relation': member['Relation'] ?? '',
-        'Age': member['Age'] ?? 0,
-        'Gender': member['Gender'] ?? '',
-        'Civil_Status': member['Civil_Status'] ?? '',
-        'Education': member['Education'] ?? '',
-        'Occupational_Skills': member['Occupational_Skills'] ?? '',
-        'Remarks': member['Remarks'] ?? '',
-        'Code': member['Code'] ?? '',
-        'Barangay': headBarangay,
-        'Site': actualSite,
-        'Date_Transferred': now,
-        'Time_Deployed': timeDeployed,
-        'Time_Discharge': now,
-        '4Ps_Families': fourPsFamilies,
-      };
-      dischargeInserts.add(familyEntry);
-    }
-
-    // Step 5: Insert into Discharge_Resident
     try {
       await supabase.from('Discharge_Resident').insert(dischargeInserts);
-      if (mounted) {
-        await _showDischargeSuccessDialog(
-          context,
-          registrationData?['Head_Firstname'] ?? 'Resident',
-          dischargeInserts.length,
-        );
-      }
-    } catch (e) {
-      debugPrint('❌ Error inserting into Discharge_Resident: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ Error discharging resident: $e')),
-        );
-      }
+
+      await supabase
+          .from('Evacuation_A')
+          .delete()
+          .eq('UID', uid)
+          .eq('Site', currentSiteName);
+
+      await supabase
+          .from('Evacuation_B')
+          .delete()
+          .eq('UID', uid)
+          .eq('Site', currentSiteName);
+
+      if (!mounted) return;
+
+      await _showDischargeSuccessDialog(context, dischargedNames);
+    } catch (e, st) {
+      debugPrint('❌ Error discharging resident: $e');
+      debugPrint('$st');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ Error discharging resident: $e')),
+      );
+      return;
     }
   }
 
   Future<void> _showDischargeSuccessDialog(
     BuildContext ctx,
-    dynamic residentName,
-    int totalMembers,
+    List<String> dischargedNames,
   ) async {
     if (!ctx.mounted) return;
 
@@ -639,78 +931,104 @@ class _WebSantaHighSchoolResidentsPageState
       builder: (dCtx) {
         return Dialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(16),
           ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 25),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 85,
-                  height: 85,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFF0D743D).withOpacity(0.15),
-                  ),
-                  child: const Center(
-                    child: Icon(
-                      Icons.check_circle,
-                      color: Color(0xFF0D743D),
-                      size: 65,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  'Successfully Discharged',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.poppins(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  '$residentName and $totalMembers member(s) discharged.',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.poppins(
-                    fontSize: 15,
-                    color: Colors.black87,
-                  ),
-                ),
-                const SizedBox(height: 25),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.of(dCtx).pop();
-                      Navigator.pushReplacement(
-                        ctx,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              const WebDischargeDashboardPage(),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0D743D).withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      backgroundColor: const Color(0xFF0D743D),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        child: const Icon(
+                          Icons.check_circle,
+                          color: Color(0xFF0D743D),
+                          size: 22,
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Residents Discharged',
+                          style: GoogleFonts.poppins(
+                            fontSize: 16.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerLeft,
                     child: Text(
-                      'OK',
+                      'The following selected residents were discharged from $currentSiteName.',
                       style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 12.8,
+                        color: Colors.black87,
+                        height: 1.45,
                       ),
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    constraints: const BoxConstraints(maxHeight: 140),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF6F8F7),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: SingleChildScrollView(
+                      child: _buildNameChips(
+                        dischargedNames.toSet().toList(),
+                        bgColor: const Color(0xFFE8F5EC),
+                        textColor: const Color(0xFF0D743D),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.of(dCtx).pop();
+                        Navigator.pushReplacement(
+                          ctx,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                const WebDischargeDashboardPage(),
+                          ),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 11),
+                        backgroundColor: const Color(0xFF0D743D),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: Text(
+                        'Done',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12.8,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -718,20 +1036,432 @@ class _WebSantaHighSchoolResidentsPageState
     );
   }
 
-  // ================= UI =================
+  Widget _buildTopSummaryCard() {
+    final selectedCount = selected.values.where((v) => v).length;
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF0D743D), Color(0xFF169B55)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0D743D).withOpacity(0.14),
+            blurRadius: 12,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          SizedBox(
+            width: 420,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.16),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.home_work_outlined,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Santa High School',
+                        style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Select the family head to discharge the residents currently assigned to this site.',
+                        style: GoogleFonts.poppins(
+                          color: Colors.white.withOpacity(0.92),
+                          fontSize: 12.6,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _buildMiniStat('Families', residents.length.toString()),
+              _buildMiniStat('Selected', selectedCount.toString()),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMiniStat(String label, String value) {
+    return Container(
+      width: 108,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.12)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.poppins(
+              color: Colors.white.withOpacity(0.88),
+              fontSize: 11.2,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: GoogleFonts.poppins(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoPill(IconData icon, String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F7F5),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFF0D743D).withOpacity(0.06)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: const Color(0xFF0D743D)),
+          const SizedBox(width: 5),
+          Text(
+            text,
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              color: Colors.black87,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFamilyCountBadge(int count) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE8F5EC),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Text(
+        '$count member${count == 1 ? '' : 's'}',
+        style: GoogleFonts.poppins(
+          fontSize: 11.4,
+          fontWeight: FontWeight.w600,
+          color: const Color(0xFF0D743D),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFamilyCard(
+    Map<String, dynamic> r,
+    List<String> family,
+    bool isExpanded,
+    bool isSelected,
+    int index,
+    bool isWide,
+  ) {
+    final displayName = (r['Family_Member'] ?? 'N/A').toString();
+    final ageText = (r['Age'] ?? 'N/A').toString();
+    final genderText = (r['Gender'] ?? 'N/A').toString();
+    final siteText = (r['Site'] ?? 'N/A').toString();
+    final familyCount = family.length;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: isSelected ? const Color(0xFFF2FAF5) : Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(
+          color: isSelected
+              ? const Color(0xFF0D743D).withOpacity(0.22)
+              : Colors.grey.withOpacity(0.10),
+          width: isSelected ? 1.2 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 5,
+            height: isExpanded ? 210 : 138,
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? const Color(0xFF0D743D)
+                  : const Color(0xFF0D743D).withOpacity(0.10),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(15),
+                bottomLeft: Radius.circular(15),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Checkbox(
+                        value: isSelected,
+                        onChanged: (val) => _toggleSelect(index),
+                        activeColor: const Color(0xFF0D743D),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0D743D).withOpacity(0.10),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.groups_rounded,
+                          color: Color(0xFF0D743D),
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Text(
+                                  displayName,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                _buildFamilyCountBadge(familyCount),
+                                if (isSelected) ...[
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 5,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF0D743D),
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: Text(
+                                      'Selected',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 11,
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                                const SizedBox(width: 10),
+                                _buildInfoPill(
+                                  Icons.cake_outlined,
+                                  'Age: $ageText',
+                                ),
+                                const SizedBox(width: 8),
+                                _buildInfoPill(
+                                  Icons.person_outline,
+                                  'Gender: $genderText',
+                                ),
+                                const SizedBox(width: 8),
+                                _buildInfoPill(Icons.place_outlined, siteText),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: Colors.grey.withOpacity(0.10),
+                  ),
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(18),
+                      onTap: () => _toggle(index),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 8,
+                          horizontal: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isExpanded
+                              ? const Color(0xFF0D743D).withOpacity(0.08)
+                              : Colors.grey[100],
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              isExpanded
+                                  ? Icons.keyboard_arrow_up_rounded
+                                  : Icons.keyboard_arrow_down_rounded,
+                              color: const Color(0xFF0D743D),
+                              size: 18,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              isExpanded
+                                  ? "Hide Family Members"
+                                  : "Show Family Members",
+                              style: GoogleFonts.poppins(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.black87,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (isExpanded)
+                    Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(top: 10),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF7F8F8),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: family.isEmpty
+                          ? Text(
+                              "No family members found",
+                              style: GoogleFonts.poppins(
+                                fontSize: 12.8,
+                                color: Colors.black87,
+                              ),
+                            )
+                          : Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: family.map((m) {
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 7,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: Colors.grey.withOpacity(0.14),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    m,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 12.2,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final selectedCount = selected.values.where((v) => v).length;
+
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      backgroundColor: const Color(0xFFF3F5F4),
       appBar: AppBar(
         centerTitle: true,
-        elevation: 2,
+        elevation: 0,
         backgroundColor: const Color(0xFF0D743D),
+        iconTheme: const IconThemeData(color: Colors.white),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
         title: Text(
-          "Farmers Covered Court Residents",
+          "Santa High School Residents",
           style: GoogleFonts.poppins(
             fontWeight: FontWeight.bold,
             color: Colors.white,
+            fontSize: 17,
           ),
         ),
         actions: [
@@ -742,6 +1472,7 @@ class _WebSantaHighSchoolResidentsPageState
               style: GoogleFonts.poppins(
                 color: Colors.white,
                 fontWeight: FontWeight.w600,
+                fontSize: 12.8,
               ),
             ),
           ),
@@ -750,9 +1481,10 @@ class _WebSantaHighSchoolResidentsPageState
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: const Color(0xFF0D743D),
+        elevation: 3,
         icon: const Icon(Icons.exit_to_app_rounded, color: Colors.white),
         label: Text(
-          "Discharge",
+          selectedCount > 0 ? "Discharge ($selectedCount)" : "Discharge",
           style: GoogleFonts.poppins(
             fontWeight: FontWeight.w600,
             color: Colors.white,
@@ -761,246 +1493,91 @@ class _WebSantaHighSchoolResidentsPageState
         onPressed: _dischargeSelectedResidents,
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         child: isLoading
             ? const Center(child: CircularProgressIndicator())
-            : LayoutBuilder(
-                builder: (context, constraints) {
-                  final isWide = constraints.maxWidth > 900;
+            : Column(
+                children: [
+                  _buildTopSummaryCard(),
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final isWide = constraints.maxWidth > 900;
 
-                  return ListView.builder(
-                    itemCount: residents.length,
-                    itemBuilder: (context, index) {
-                      final r = residents[index];
-                      final regId = r['Registration_ID'].toString();
-                      final family = familyMembersCache[regId] ?? [];
-                      final isExpanded = expanded[index] ?? false;
-                      final isSelected = selected[index] ?? false;
-
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: isSelected ? Colors.green[50] : Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
-                              blurRadius: 6,
-                              offset: const Offset(0, 3),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          children: [
-                            // ===== HEADER =====
-                            isWide
-                                ? Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.center,
-                                    children: [
-                                      Checkbox(
-                                        value: isSelected,
-                                        onChanged: (val) =>
-                                            _toggleSelect(index),
-                                        activeColor: const Color(0xFF0D743D),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      const Icon(
-                                        Icons.person,
-                                        color: Color(0xFF0D743D),
-                                        size: 26,
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Wrap(
-                                          spacing: 20,
-                                          runSpacing: 6,
-                                          children: [
-                                            Text(
-                                              r['Family_Member'] ?? 'N/A',
-                                              style: GoogleFonts.poppins(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                            Text(
-                                              "Age: ${r['Age'] ?? 'N/A'}",
-                                              style: GoogleFonts.poppins(
-                                                fontSize: 14,
-                                              ),
-                                            ),
-                                            Text(
-                                              "Gender: ${r['Gender'] ?? 'N/A'}",
-                                              style: GoogleFonts.poppins(
-                                                fontSize: 14,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.end,
-                                        children: [
-                                          Text(
-                                            "Site",
-                                            style: GoogleFonts.poppins(
-                                              fontSize: 12,
-                                              color: Colors.grey,
-                                            ),
-                                          ),
-                                          Text(
-                                            r['Site'] ?? 'N/A',
-                                            style: GoogleFonts.poppins(
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  )
-                                : Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.center,
-                                        children: [
-                                          Checkbox(
-                                            value: isSelected,
-                                            onChanged: (val) =>
-                                                _toggleSelect(index),
-                                            activeColor: const Color(
-                                              0xFF0D743D,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 4),
-                                          const Icon(
-                                            Icons.person,
-                                            color: Color(0xFF0D743D),
-                                            size: 26,
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: Text(
-                                              r['Family_Member'] ?? 'N/A',
-                                              style: GoogleFonts.poppins(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Wrap(
-                                        spacing: 16,
-                                        children: [
-                                          Text(
-                                            "Age: ${r['Age'] ?? 'N/A'}",
-                                            style: GoogleFonts.poppins(
-                                              fontSize: 14,
-                                            ),
-                                          ),
-                                          Text(
-                                            "Gender: ${r['Gender'] ?? 'N/A'}",
-                                            style: GoogleFonts.poppins(
-                                              fontSize: 14,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        "Site: ${r['Site'] ?? 'N/A'}",
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 14,
-                                          color: Colors.grey[700],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-
-                            const SizedBox(height: 10),
-
-                            // ===== TOGGLE FAMILY MEMBERS =====
-                            InkWell(
-                              borderRadius: BorderRadius.circular(20),
-                              onTap: () => _toggle(index),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 6,
-                                  horizontal: 14,
+                        if (residents.isEmpty) {
+                          return Center(
+                            child: Container(
+                              padding: const EdgeInsets.all(22),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: Colors.grey.withOpacity(0.10),
                                 ),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey[300],
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      isExpanded
-                                          ? "Hide Family Members"
-                                          : "Show Family Members",
-                                      style: GoogleFonts.poppins(fontSize: 14),
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 62,
+                                    height: 62,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF4F7F5),
+                                      borderRadius: BorderRadius.circular(16),
                                     ),
-                                    Icon(
-                                      isExpanded
-                                          ? Icons.keyboard_arrow_up_rounded
-                                          : Icons.keyboard_arrow_down_rounded,
+                                    child: Icon(
+                                      Icons.groups_outlined,
+                                      size: 30,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    'No residents found',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'There are no families currently assigned to this site.',
+                                    textAlign: TextAlign.center,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 12.8,
                                       color: Colors.grey[700],
                                     ),
-                                  ],
-                                ),
+                                  ),
+                                ],
                               ),
                             ),
+                          );
+                        }
 
-                            if (isExpanded)
-                              Container(
-                                width: double.infinity,
-                                margin: const EdgeInsets.only(top: 10),
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey[100],
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: family.isEmpty
-                                    ? Text(
-                                        "No family members found",
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 14,
-                                        ),
-                                      )
-                                    : Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: family
-                                            .map(
-                                              (m) => Padding(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      vertical: 3,
-                                                    ),
-                                                child: Text(
-                                                  "• $m",
-                                                  style: GoogleFonts.poppins(
-                                                    fontSize: 14,
-                                                  ),
-                                                ),
-                                              ),
-                                            )
-                                            .toList(),
-                                      ),
-                              ),
-                          ],
-                        ),
-                      );
-                    },
-                  );
-                },
+                        return ListView.builder(
+                          itemCount: residents.length,
+                          itemBuilder: (context, index) {
+                            final r = residents[index];
+                            final regId = r['Registration_ID'].toString();
+                            final family = familyMembersCache[regId] ?? [];
+                            final isExpanded = expanded[index] ?? false;
+                            final isSelected = selected[index] ?? false;
+
+                            return _buildFamilyCard(
+                              r,
+                              family,
+                              isExpanded,
+                              isSelected,
+                              index,
+                              isWide,
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
       ),
     );

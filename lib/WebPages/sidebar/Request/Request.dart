@@ -18,20 +18,29 @@ class WebRequestsPage extends StatefulWidget {
 
 class _WebRequestsPageState extends State<WebRequestsPage> {
   String selectedPage = "Requests";
-  String selectedStatus = "Pending"; // Toggle: Pending, Approved, Declined
+  String selectedStatus = "Pending";
 
   final supabase = Supabase.instance.client;
   List<Map<String, dynamic>> requests = [];
   bool isLoading = true;
 
-  // ---------------- Helper Function ----------------
+  final Color primaryGreen = const Color(0xFF0D743D);
+  final Color darkGreen = const Color(0xFF095B30);
+  final Color softBg = const Color(0xFFF4F7F6);
+  final Color cardBorder = const Color(0xFFE3EAE6);
+
   String formatRequestDate(String dateStr) {
     try {
       final dateTime = DateTime.parse(dateStr);
       return DateFormat('MM-dd-yyyy hh:mm a').format(dateTime);
     } catch (e) {
-      return dateStr; // fallback if parsing fails
+      return dateStr;
     }
+  }
+
+  String safeText(dynamic value) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? 'Not provided' : text;
   }
 
   @override
@@ -40,73 +49,97 @@ class _WebRequestsPageState extends State<WebRequestsPage> {
     fetchRequests();
   }
 
-  Future<void> approveRequest(Map<String, dynamic> request) async {
+  Future<void> _showErrorDialog(String title, String message) async {
     if (!mounted) return;
 
-    final headSurname = request['Last_Name'];
-    final headFirstName = request['First_Name'];
-    final headMiddleName = request['Middle_Name'];
+    await showDialog(
+      context: context,
+      useRootNavigator: true,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          title,
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+        ),
+        content: Text(message, style: GoogleFonts.poppins()),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text("OK", style: GoogleFonts.poppins()),
+          ),
+        ],
+      ),
+    );
+  }
 
-    // Confirmation Dialog
-    final bool? confirm = await showDialog<bool>(
+  Future<bool?> _showConfirmDialog({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String message,
+    required String confirmText,
+    required Color confirmColor,
+  }) async {
+    if (!mounted) return false;
+
+    return showDialog<bool>(
       context: context,
       useRootNavigator: true,
       barrierDismissible: false,
       builder: (context) {
         final screenWidth = MediaQuery.of(context).size.width;
+
         return Dialog(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              maxWidth: screenWidth > 600 ? 420 : screenWidth * 0.9,
+              maxWidth: screenWidth > 600 ? 430 : screenWidth * 0.9,
             ),
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    Icons.check_circle_outline,
-                    size: 70,
-                    color: Colors.green.shade600,
-                  ),
+                  Icon(icon, size: 56, color: iconColor),
                   const SizedBox(height: 16),
                   Text(
-                    "Approve Request?",
+                    title,
+                    textAlign: TextAlign.center,
                     style: GoogleFonts.poppins(
-                      fontSize: 22,
+                      fontSize: 21,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
                   Text(
-                    "Do you want to see related household info for this request?",
+                    message,
                     textAlign: TextAlign.center,
                     style: GoogleFonts.poppins(
-                      fontSize: 15,
+                      fontSize: 14,
+                      height: 1.5,
                       color: Colors.grey.shade700,
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 22),
                   Row(
                     children: [
                       Expanded(
                         child: OutlinedButton(
                           onPressed: () => Navigator.of(context).pop(false),
                           style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            side: BorderSide(color: Colors.grey.shade300),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            side: BorderSide(color: Colors.grey.shade400),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
                           ),
                           child: Text(
                             "Cancel",
                             style: GoogleFonts.poppins(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black87,
                             ),
                           ),
                         ),
@@ -116,16 +149,16 @@ class _WebRequestsPageState extends State<WebRequestsPage> {
                         child: ElevatedButton(
                           onPressed: () => Navigator.of(context).pop(true),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green.shade600,
+                            elevation: 0,
+                            backgroundColor: confirmColor,
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
                           child: Text(
-                            "Yes",
+                            confirmText,
                             style: GoogleFonts.poppins(
-                              fontSize: 16,
                               fontWeight: FontWeight.w600,
                               color: Colors.white,
                             ),
@@ -141,139 +174,148 @@ class _WebRequestsPageState extends State<WebRequestsPage> {
         );
       },
     );
+  }
+
+  Future<void> _showResultDialog({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String message,
+  }) async {
+    if (!mounted) return;
+
+    await showDialog(
+      context: context,
+      useRootNavigator: true,
+      builder: (context) {
+        final screenWidth = MediaQuery.of(context).size.width;
+
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: screenWidth > 600 ? 430 : screenWidth * 0.9,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 56, color: iconColor),
+                  const SizedBox(height: 16),
+                  Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.poppins(
+                      fontSize: 21,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    message,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      height: 1.5,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: ElevatedButton.styleFrom(
+                        elevation: 0,
+                        backgroundColor: primaryGreen,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        "OK",
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> approveRequest(Map<String, dynamic> request) async {
+    if (!mounted) return;
+
+    final headSurname = safeText(request['Last_Name']);
+    final headFirstName = safeText(request['First_Name']);
+    final headMiddleName = safeText(request['Middle_Name']);
+
+    final requestId = safeText(request['Request_ID']);
+    final requestEmail = safeText(request['Email_Address']);
+
+    final bool? confirm = await _showConfirmDialog(
+      icon: Icons.manage_search_rounded,
+      iconColor: primaryGreen,
+      title: "Find Related Household?",
+      message:
+          "The system will search for matching registered households first. The request will only be approved after the correct QR code is selected and sent to the resident email.",
+      confirmText: "Continue",
+      confirmColor: primaryGreen,
+    );
 
     if (confirm != true) return;
 
-    // Fetch related households
     List<Map<String, dynamic>> relatedHouseholds = [];
+
     try {
-      relatedHouseholds = await supabase
-          .from('Registration_Table')
-          .select(
-            'Head_Firstname, Head_Middlename, Head_Surname, Registration_ID, QR_Code',
-          )
-          .ilike('Head_Surname', '%$headSurname%')
-          .ilike('Head_Firstname', '%$headFirstName%')
-          .ilike('Head_Middlename', '%$headMiddleName%');
+      if (headMiddleName == 'Not provided') {
+        relatedHouseholds = await supabase
+            .from('Registration_Table')
+            .select(
+              'Head_Firstname, Head_Middlename, Head_Surname, Registration_ID, QR_Code',
+            )
+            .ilike('Head_Surname', '%$headSurname%')
+            .ilike('Head_Firstname', '%$headFirstName%');
+      } else {
+        relatedHouseholds = await supabase
+            .from('Registration_Table')
+            .select(
+              'Head_Firstname, Head_Middlename, Head_Surname, Registration_ID, QR_Code',
+            )
+            .ilike('Head_Surname', '%$headSurname%')
+            .ilike('Head_Firstname', '%$headFirstName%')
+            .ilike('Head_Middlename', '%$headMiddleName%');
+      }
     } catch (e) {
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        useRootNavigator: true,
-        builder: (context) => AlertDialog(
-          title: const Text("Error"),
-          content: Text("Failed to fetch related households:\n$e"),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text("OK"),
-            ),
-          ],
-        ),
+      await _showErrorDialog(
+        "Error",
+        "Failed to fetch related households:\n$e",
       );
       return;
     }
 
     if (!mounted) return;
 
-    // Decline flow if no related households
     if (relatedHouseholds.isEmpty) {
-      final bool? reject = await showDialog<bool>(
-        context: context,
-        useRootNavigator: true,
-        barrierDismissible: false,
-        builder: (context) {
-          final screenWidth = MediaQuery.of(context).size.width;
-          return Dialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: screenWidth > 600 ? 420 : screenWidth * 0.9,
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        color: Colors.red.withOpacity(0.15),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.cancel_rounded,
-                        size: 70,
-                        color: Colors.red,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      "No Related Households",
-                      style: GoogleFonts.poppins(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      "No related household records were found for this name. Do you want to reject (decline) this request?",
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.poppins(
-                        fontSize: 15,
-                        color: Colors.grey.shade700,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.of(context).pop(false),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              side: BorderSide(color: Colors.grey.shade400),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: Text(
-                              "Cancel",
-                              style: GoogleFonts.poppins(fontSize: 16),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () => Navigator.of(context).pop(true),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.red.shade600,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: Text(
-                              "Reject",
-                              style: GoogleFonts.poppins(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
+      final bool? reject = await _showConfirmDialog(
+        icon: Icons.cancel_rounded,
+        iconColor: Colors.red.shade600,
+        title: "No Related Households",
+        message:
+            "No related household records were found for this name. Do you want to reject this request?",
+        confirmText: "Reject",
+        confirmColor: Colors.red.shade600,
       );
 
       if (reject == true) {
@@ -285,233 +327,67 @@ class _WebRequestsPageState extends State<WebRequestsPage> {
 
           if (!mounted) return;
 
-          // Success popup
-          await showDialog(
-            context: context,
-            useRootNavigator: true,
-            builder: (context) {
-              final screenWidth = MediaQuery.of(context).size.width;
-              return Dialog(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: screenWidth > 600 ? 420 : screenWidth * 0.9,
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(18),
-                          decoration: BoxDecoration(
-                            color: Colors.red.withOpacity(0.15),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.cancel_rounded,
-                            size: 70,
-                            color: Colors.red,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          "Request Rejected",
-                          style: GoogleFonts.poppins(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          "The request has been declined successfully.",
-                          textAlign: TextAlign.center,
-                          style: GoogleFonts.poppins(
-                            fontSize: 15,
-                            color: Colors.grey.shade700,
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF0D743D),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: Text(
-                              "OK",
-                              style: GoogleFonts.poppins(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
+          await _showResultDialog(
+            icon: Icons.cancel_rounded,
+            iconColor: Colors.red.shade600,
+            title: "Request Rejected",
+            message: "The request has been declined successfully.",
           );
 
-          // Refresh requests list
           fetchRequests();
         } catch (e) {
-          if (!mounted) return;
-          showDialog(
-            context: context,
-            useRootNavigator: true,
-            builder: (context) => AlertDialog(
-              title: const Text("Error"),
-              content: Text("Failed to decline request:\n$e"),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text("OK"),
-                ),
-              ],
-            ),
-          );
+          await _showErrorDialog("Error", "Failed to decline request:\n$e");
         }
       }
-      return; // stop further action if no households
+
+      return;
     }
 
-    // Approve flow for existing related households
-    try {
-      await supabase
-          .from('Request_Table')
-          .update({'Status': 'Approved'})
-          .eq('Request_ID', request['Request_ID']);
+    /*
+      IMPORTANT:
+      We do NOT update Status to Approved here anymore.
 
-      if (!mounted) return;
+      New process:
+      1. Admin clicks Find QR.
+      2. System searches related households.
+      3. Admin selects the correct household.
+      4. QR preview page opens.
+      5. Email is already passed from this request.
+      6. QR page sends QR to that email.
+      7. Request becomes Approved only after sending succeeds.
+    */
 
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RelatedHouseholdsPage(
+          households: relatedHouseholds,
+          requestId: requestId,
+          requestEmail: requestEmail,
+        ),
+      ),
+    );
+
+    if (mounted) {
       fetchRequests();
-
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) =>
-              RelatedHouseholdsPage(households: relatedHouseholds),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        useRootNavigator: true,
-        builder: (context) => AlertDialog(
-          title: const Text("Error"),
-          content: Text("Failed to update request status or navigate:\n$e"),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text("OK"),
-            ),
-          ],
-        ),
-      );
     }
   }
 
   Future<void> declineRequest(String requestId) async {
     if (!mounted) return;
 
-    // ---------------- CONFIRMATION DIALOG ----------------
-    final bool? confirm = await showDialog<bool>(
-      context: context,
-      useRootNavigator: true,
-      barrierDismissible: false,
-      builder: (context) {
-        final screenWidth = MediaQuery.of(context).size.width;
-
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: screenWidth > 600 ? 420 : screenWidth * 0.9,
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.warning_amber_rounded,
-                    size: 60,
-                    color: Colors.red.shade600,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    "Decline Request?",
-                    style: GoogleFonts.poppins(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    "Are you sure you want to decline this request? This action cannot be undone.",
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      color: Colors.grey.shade700,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => Navigator.of(context).pop(false),
-                          style: OutlinedButton.styleFrom(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: const Text("Cancel"),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: () => Navigator.of(context).pop(true),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: const Text(
-                            "Yes, Decline",
-                            style: TextStyle(color: Colors.white),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
+    final bool? confirm = await _showConfirmDialog(
+      icon: Icons.warning_amber_rounded,
+      iconColor: Colors.red.shade600,
+      title: "Decline Request?",
+      message:
+          "Are you sure you want to decline this request? This action cannot be undone.",
+      confirmText: "Yes, Decline",
+      confirmColor: Colors.red.shade600,
     );
 
     if (confirm != true) return;
 
-    // ---------------- UPDATE STATUS ----------------
     try {
       await supabase
           .from('Request_Table')
@@ -520,105 +396,22 @@ class _WebRequestsPageState extends State<WebRequestsPage> {
 
       if (!mounted) return;
 
-      // ---------------- SUCCESS POPUP ----------------
-      await showDialog(
-        context: context,
-        useRootNavigator: true,
-        builder: (context) {
-          final screenWidth = MediaQuery.of(context).size.width;
-
-          return Dialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: screenWidth > 600 ? 420 : screenWidth * 0.9,
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withOpacity(0.15),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.check_circle,
-                        color: Colors.green,
-                        size: 60,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      "Request Declined",
-                      style: GoogleFonts.poppins(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      "The request has been successfully declined.",
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        color: Colors.grey.shade700,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0D743D),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text(
-                          "OK",
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
+      await _showResultDialog(
+        icon: Icons.check_circle,
+        iconColor: Colors.green.shade600,
+        title: "Request Declined",
+        message: "The request has been successfully declined.",
       );
 
       fetchRequests();
     } catch (e) {
-      if (!mounted) return;
-
-      // ---------------- ERROR POPUP ----------------
-      showDialog(
-        context: context,
-        useRootNavigator: true,
-        builder: (context) => AlertDialog(
-          title: const Text("Error"),
-          content: Text("Failed to decline request:\n$e"),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text("OK"),
-            ),
-          ],
-        ),
-      );
+      await _showErrorDialog("Error", "Failed to decline request:\n$e");
     }
   }
 
-  // ---------------- Fetch Requests ----------------
   Future<void> fetchRequests() async {
     setState(() => isLoading = true);
+
     try {
       final data = await supabase
           .from('Request_Table')
@@ -630,26 +423,48 @@ class _WebRequestsPageState extends State<WebRequestsPage> {
         requests = List<Map<String, dynamic>>.from(data);
       });
     } catch (e) {
+      if (!mounted) return;
+
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Error fetching requests: $e')));
     } finally {
-      setState(() => isLoading = false);
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
     }
   }
 
-  // 🧭 Drawer
   Widget _buildAdminDrawer() {
     return Drawer(
+      backgroundColor: Colors.white,
       child: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              DrawerHeader(
-                decoration: const BoxDecoration(color: Color(0xFF0D743D)),
-                child: Align(
-                  alignment: Alignment.bottomLeft,
-                  child: Text(
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [primaryGreen, darkGreen],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const CircleAvatar(
+                    radius: 28,
+                    backgroundColor: Colors.white24,
+                    child: Icon(
+                      Icons.admin_panel_settings_rounded,
+                      color: Colors.white,
+                      size: 30,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
                     'Admin Dashboard',
                     style: GoogleFonts.poppins(
                       fontSize: 22,
@@ -657,112 +472,135 @@ class _WebRequestsPageState extends State<WebRequestsPage> {
                       color: Colors.white,
                     ),
                   ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Evacuation Management System',
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      color: Colors.white.withOpacity(0.90),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Column(
+                  children: [
+                    _buildDrawerItem('Dashboard', Icons.dashboard_outlined),
+                    _buildDrawerItem(
+                      'Resident Management',
+                      Icons.people_alt_outlined,
+                    ),
+                    _buildDrawerItem('QR Code Management', Icons.qr_code_2),
+                    _buildDrawerItem(
+                      'Discharge Residents',
+                      Icons.exit_to_app_rounded,
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 10,
+                      ),
+                      child: Divider(color: Colors.grey.shade300),
+                    ),
+                    _buildDrawerItem('Reports', Icons.analytics_outlined),
+                    _buildDrawerItem(
+                      'Requests',
+                      Icons.pending_actions_outlined,
+                    ),
+                  ],
                 ),
               ),
-
-              // Drawer items
-              _buildDrawerItem('Dashboard', Icons.dashboard_outlined),
-              _buildDrawerItem(
-                'Resident Management',
-                Icons.people_alt_outlined,
-              ),
-              _buildDrawerItem('QR Code Management', Icons.qr_code_2),
-              _buildDrawerItem(
-                'Discharge Residents',
-                Icons.exit_to_app_rounded,
-              ),
-
-              const Divider(),
-
-              _buildDrawerItem('Reports', Icons.analytics_outlined),
-              _buildDrawerItem('Requests', Icons.pending_actions_outlined),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  // 🔹 Drawer Item Widget with if-else navigation logic
   Widget _buildDrawerItem(String title, IconData icon) {
     final bool isSelected = selectedPage == title;
 
-    return ListTile(
-      leading: Icon(
-        icon,
-        color: isSelected ? const Color(0xFF0D743D) : Colors.black54,
-      ),
-      tileColor: isSelected ? const Color(0xFF0D743D).withOpacity(0.1) : null,
-      title: Text(
-        title,
-        style: GoogleFonts.poppins(
-          fontSize: 16,
-          fontWeight: FontWeight.w500,
-          color: isSelected ? const Color(0xFF0D743D) : Colors.black,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Material(
+        color: isSelected ? primaryGreen.withOpacity(0.10) : Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: ListTile(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          leading: Icon(
+            icon,
+            color: isSelected ? primaryGreen : Colors.black54,
+          ),
+          title: Text(
+            title,
+            style: GoogleFonts.poppins(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              color: isSelected ? primaryGreen : Colors.black87,
+            ),
+          ),
+          onTap: () {
+            setState(() => selectedPage = title);
+            Navigator.pop(context);
+
+            if (title == 'Dashboard') {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const WebMainDashboard()),
+              );
+            } else if (title == 'Resident Management') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const WebManageResidentsPage(),
+                ),
+              );
+            } else if (title == 'QR Code Management') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const WebDisplayAllQrPage()),
+              );
+            } else if (title == 'Discharge Residents') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const WebDischargeDashboardPage(),
+                ),
+              );
+            } else if (title == 'Reports') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const WebReportsPage()),
+              );
+            } else if (title == 'Requests') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const WebRequestsPage()),
+              );
+            }
+          },
         ),
       ),
-      onTap: () {
-        setState(() {
-          selectedPage = title;
-        });
-
-        Navigator.pop(context);
-
-        // 🧭 Navigation logic
-        if (title == 'Dashboard') {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const WebMainDashboard()),
-          );
-        } else if (title == 'Resident Management') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const WebManageResidentsPage(),
-            ),
-          );
-        } else if (title == 'QR Code Management') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const WebDisplayAllQrPage(),
-            ),
-          );
-        } else if (title == 'Discharge Residents') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const WebDischargeDashboardPage(),
-            ),
-          );
-        } else if (title == 'Reports') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const WebReportsPage()),
-          );
-        } else if (title == 'Requests') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const WebRequestsPage()),
-          );
-        }
-      },
     );
   }
 
-  // ---------------- Status Toggle ----------------
   Widget _buildStatusToggle() {
     return Container(
       padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
-        color: Colors.grey.shade100,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade300),
+        border: Border.all(color: cardBorder),
       ),
       child: Row(
         children: ["Pending", "Approved", "Declined"].map((status) {
           final isSelected = selectedStatus == status;
-          Color color = status == "Pending"
+          final color = status == "Pending"
               ? Colors.orange
               : status == "Approved"
               ? Colors.green
@@ -776,11 +614,11 @@ class _WebRequestsPageState extends State<WebRequestsPage> {
                 fetchRequests();
               },
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 250),
+                duration: const Duration(milliseconds: 200),
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 decoration: BoxDecoration(
                   color: isSelected
-                      ? color.withOpacity(0.15)
+                      ? color.withOpacity(0.12)
                       : Colors.transparent,
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -796,6 +634,7 @@ class _WebRequestsPageState extends State<WebRequestsPage> {
                     Text(
                       status,
                       style: GoogleFonts.poppins(
+                        fontSize: 13.5,
                         fontWeight: FontWeight.w600,
                         color: isSelected ? color : Colors.black54,
                       ),
@@ -832,46 +671,191 @@ class _WebRequestsPageState extends State<WebRequestsPage> {
     }
   }
 
-  Widget _infoRow(IconData icon, String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: [
-          Icon(icon, size: 16, color: Colors.grey.shade600),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              text,
+  Widget _infoRow(IconData icon, String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: primaryGreen),
+        const SizedBox(width: 8),
+        Expanded(
+          child: RichText(
+            text: TextSpan(
               style: GoogleFonts.poppins(
-                fontSize: 14,
+                fontSize: 13.5,
                 color: Colors.grey.shade800,
+                height: 1.4,
               ),
+              children: [
+                TextSpan(
+                  text: "$label ",
+                  style: GoogleFonts.poppins(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black87,
+                    height: 1.4,
+                  ),
+                ),
+                TextSpan(
+                  text: value,
+                  style: GoogleFonts.poppins(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w400,
+                    color: Colors.grey.shade800,
+                    height: 1.4,
+                  ),
+                ),
+              ],
             ),
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRequestCard(Map<String, dynamic> req) {
+    final middleName = safeText(req['Middle_Name']);
+    final fullName =
+        "${safeText(req['First_Name'])} ${middleName == 'Not provided' ? '' : middleName} ${safeText(req['Last_Name'])}"
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .trim();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            fullName.isEmpty ? 'Unnamed Request' : fullName,
+            style: GoogleFonts.poppins(
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _infoRow(
+            Icons.email_outlined,
+            "Email:",
+            safeText(req['Email_Address']),
+          ),
+          const SizedBox(height: 8),
+          _infoRow(Icons.help_outline, "Reason:", safeText(req['Reason'])),
+          const SizedBox(height: 8),
+          _infoRow(
+            Icons.calendar_today_outlined,
+            "Date Requested:",
+            formatRequestDate(safeText(req['Request_Date'])),
+          ),
+          const SizedBox(height: 14),
+          if (selectedStatus == "Pending")
+            Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 42,
+                    child: ElevatedButton.icon(
+                      onPressed: () => approveRequest(req),
+                      icon: const Icon(
+                        Icons.search_rounded,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                      label: Text(
+                        "Find QR",
+                        style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        elevation: 0,
+                        backgroundColor: primaryGreen,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: SizedBox(
+                    height: 42,
+                    child: OutlinedButton.icon(
+                      onPressed: () =>
+                          declineRequest(req['Request_ID'].toString()),
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                      label: Text(
+                        "Decline",
+                        style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red,
+                        side: const BorderSide(color: Colors.red),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 7,
+                ),
+                decoration: BoxDecoration(
+                  color: statusColor(selectedStatus).withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  selectedStatus,
+                  style: GoogleFonts.poppins(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: statusColor(selectedStatus),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 
-  // ---------------- Build ----------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: softBg,
       drawer: _buildAdminDrawer(),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0D743D),
+        elevation: 0,
+        backgroundColor: primaryGreen,
+        surfaceTintColor: Colors.transparent,
         centerTitle: true,
         iconTheme: const IconThemeData(color: Colors.white),
         title: Text(
           "Requests",
           style: GoogleFonts.poppins(
-            fontWeight: FontWeight.bold,
+            fontWeight: FontWeight.w600,
+            fontSize: 18,
             color: Colors.white,
           ),
         ),
       ),
       body: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -879,164 +863,43 @@ class _WebRequestsPageState extends State<WebRequestsPage> {
               "QR Code Requests",
               style: GoogleFonts.poppins(
                 fontSize: 22,
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w700,
+                color: Colors.black87,
               ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              "Review resident QR requests. The email will be passed automatically to the QR sending page.",
+              style: GoogleFonts.poppins(fontSize: 14, color: Colors.black54),
             ),
             const SizedBox(height: 16),
             _buildStatusToggle(),
-            const SizedBox(height: 20),
-
+            const SizedBox(height: 18),
             Expanded(
               child: isLoading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? Center(
+                      child: CircularProgressIndicator(color: primaryGreen),
+                    )
                   : requests.isEmpty
                   ? Center(
                       child: Text(
                         "No $selectedStatus requests found.",
-                        style: GoogleFonts.poppins(fontSize: 16),
+                        style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          color: Colors.black54,
+                        ),
                       ),
                     )
-                  : ListView.builder(
-                      itemCount: requests.length,
-                      itemBuilder: (context, i) {
-                        final req = requests[i];
-
-                        return Card(
-                          elevation: 4,
-                          margin: const EdgeInsets.only(bottom: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Row(
-                            children: [
-                              // Gradient Status Bar
-                              Container(
-                                width: 6,
-                                height: 120,
-                                decoration: BoxDecoration(
-                                  borderRadius: const BorderRadius.horizontal(
-                                    left: Radius.circular(16),
-                                  ),
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topCenter,
-                                    end: Alignment.bottomCenter,
-                                    colors: selectedStatus == "Pending"
-                                        ? [
-                                            Colors.orange.shade200,
-                                            Colors.orange.shade600,
-                                          ]
-                                        : selectedStatus == "Approved"
-                                        ? [
-                                            Colors.green.shade500,
-                                            Colors.green.shade700,
-                                          ]
-                                        : [
-                                            Colors.red.shade300,
-                                            Colors.red.shade700,
-                                          ],
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: selectedStatus == "Pending"
-                                          ? Colors.orange.withOpacity(0.35)
-                                          : selectedStatus == "Approved"
-                                          ? Colors.green.withOpacity(0.35)
-                                          : Colors.red.withOpacity(0.35),
-                                      blurRadius: 10,
-                                      spreadRadius: 1,
-                                      offset: const Offset(0, 3),
-                                    ),
-                                  ],
-                                ),
-                              ),
-
-                              Expanded(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(18),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      // Always black full name
-                                      Text(
-                                        "${req['First_Name']} ${req['Middle_Name'] ?? ''} ${req['Last_Name']}",
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 17,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.black87,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      _infoRow(
-                                        Icons.email_outlined,
-                                        req['Email_Address'],
-                                      ),
-                                      _infoRow(
-                                        Icons.help_outline,
-                                        req['Reason'],
-                                      ),
-                                      _infoRow(
-                                        Icons.calendar_today,
-                                        formatRequestDate(req['Request_Date']),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-
-                              // ---------------- Pending Buttons ----------------
-                              if (selectedStatus == "Pending")
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 16),
-                                  child: Column(
-                                    children: [
-                                      ElevatedButton.icon(
-                                        icon: const Icon(
-                                          Icons.check,
-                                          size: 18,
-                                          color: Colors.white,
-                                        ),
-                                        label: const Text(
-                                          "Approve",
-                                          style: TextStyle(color: Colors.white),
-                                        ),
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: const Color(
-                                            0xFF0D743D,
-                                          ),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              10,
-                                            ),
-                                          ),
-                                        ),
-                                        onPressed: () => approveRequest(req),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      OutlinedButton.icon(
-                                        icon: const Icon(Icons.close, size: 18),
-                                        label: const Text("Decline"),
-                                        style: OutlinedButton.styleFrom(
-                                          foregroundColor: Colors.red,
-                                          side: const BorderSide(
-                                            color: Colors.red,
-                                          ),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              10,
-                                            ),
-                                          ),
-                                        ),
-                                        onPressed: () =>
-                                            declineRequest(req['Request_ID']),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                            ],
-                          ),
-                        );
-                      },
+                  : RefreshIndicator(
+                      color: primaryGreen,
+                      onRefresh: fetchRequests,
+                      child: ListView.builder(
+                        itemCount: requests.length,
+                        itemBuilder: (context, i) {
+                          final req = requests[i];
+                          return _buildRequestCard(req);
+                        },
+                      ),
                     ),
             ),
           ],

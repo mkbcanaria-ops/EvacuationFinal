@@ -29,6 +29,11 @@ class _WebMainDashboardState extends State<WebMainDashboard> {
   int _santaHighSchoolCount = 0;
   int _santaNationalHighSchoolCount = 0;
 
+  final Color primaryGreen = const Color(0xFF0D743D);
+  final Color darkGreen = const Color(0xFF095B30);
+  final Color softBg = const Color(0xFFF4F7F6);
+  final Color cardBorder = const Color(0xFFE3EAE6);
+
   @override
   void initState() {
     super.initState();
@@ -55,7 +60,6 @@ class _WebMainDashboardState extends State<WebMainDashboard> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // ⚠️ Warning icon in amber
                 Container(
                   width: 85,
                   height: 85,
@@ -71,10 +75,7 @@ class _WebMainDashboardState extends State<WebMainDashboard> {
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 18),
-
-                // Title
                 Text(
                   'Capacity Full',
                   textAlign: TextAlign.center,
@@ -84,10 +85,7 @@ class _WebMainDashboardState extends State<WebMainDashboard> {
                     color: Colors.black87,
                   ),
                 ),
-
                 const SizedBox(height: 12),
-
-                // Message
                 Text(
                   '$centerName has reached or exceeded its capacity.',
                   textAlign: TextAlign.center,
@@ -96,10 +94,7 @@ class _WebMainDashboardState extends State<WebMainDashboard> {
                     color: Colors.black87,
                   ),
                 ),
-
                 const SizedBox(height: 25),
-
-                // OK Button (green accent)
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
@@ -157,7 +152,6 @@ class _WebMainDashboardState extends State<WebMainDashboard> {
         _magsaysayCount = count;
       });
 
-      // Check if capacity is full
       if (_magsaysayCount >= 250) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _showCapacityFullDialog("Municipal Evacuation Center - Magsaysay");
@@ -197,7 +191,6 @@ class _WebMainDashboardState extends State<WebMainDashboard> {
         _farmersCourtCount = count;
       });
 
-      // Check if capacity is full
       if (_farmersCourtCount >= 200) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _showCapacityFullDialog("Municipal Farmer’s Covered Court");
@@ -236,7 +229,6 @@ class _WebMainDashboardState extends State<WebMainDashboard> {
         _santaRhuCount = count;
       });
 
-      // Check if capacity is full
       if (_santaRhuCount >= 150) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _showCapacityFullDialog("Santa RHU");
@@ -276,7 +268,6 @@ class _WebMainDashboardState extends State<WebMainDashboard> {
         _santaHighSchoolCount = count;
       });
 
-      // Check if capacity is full
       if (_santaHighSchoolCount >= 120) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _showCapacityFullDialog("Santa High School (Supplemental)");
@@ -316,7 +307,6 @@ class _WebMainDashboardState extends State<WebMainDashboard> {
         _santaNationalHighSchoolCount = count;
       });
 
-      // Check if capacity is full
       if (_santaNationalHighSchoolCount >= 100) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _showCapacityFullDialog("Santa National High School (Supplemental)");
@@ -440,14 +430,11 @@ class _WebMainDashboardState extends State<WebMainDashboard> {
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final width = size.width;
-    // ...existing code...
-    // More responsive grid sizing: calculate columns based on available width
-    // and compute childAspectRatio from a desired card height that adapts to breakpoints.
+
     int crossAxisCount = (width / 320).floor();
     if (crossAxisCount < 1) crossAxisCount = 1;
     if (crossAxisCount > 6) crossAxisCount = 6;
 
-    // Choose a target card height depending on screen size (taller on large screens)
     double targetCardHeight;
     if (width >= 1800) {
       targetCardHeight = 220;
@@ -463,12 +450,10 @@ class _WebMainDashboardState extends State<WebMainDashboard> {
       targetCardHeight = 150;
     }
 
-    // compute childAspectRatio so card height ~ targetCardHeight
     final double columnWidth =
         (width - (crossAxisCount - 1) * 16) / crossAxisCount;
     double childAspectRatio = columnWidth / targetCardHeight;
 
-    // spacing scales a bit with width
     double crossAxisSpacing = width >= 1400
         ? 20
         : width >= 1000
@@ -480,7 +465,6 @@ class _WebMainDashboardState extends State<WebMainDashboard> {
         ? 16
         : 12;
 
-    // Responsive padding: more fluid by using a percentage for large screens
     EdgeInsets bodyPadding;
     if (width > 1600) {
       bodyPadding = EdgeInsets.symmetric(
@@ -498,7 +482,7 @@ class _WebMainDashboardState extends State<WebMainDashboard> {
     } else {
       bodyPadding = const EdgeInsets.all(16);
     }
-    // ...existing code...
+
     return Scaffold(
       backgroundColor: Colors.grey[100],
       drawer: _buildAdminDrawer(),
@@ -520,8 +504,6 @@ class _WebMainDashboardState extends State<WebMainDashboard> {
           ),
         ),
       ),
-
-      // Main Body
       body: RefreshIndicator(
         onRefresh: _refreshData,
         child: SingleChildScrollView(
@@ -538,14 +520,12 @@ class _WebMainDashboardState extends State<WebMainDashboard> {
                 ),
               ),
               const SizedBox(height: 18),
-
-              // ✅ Evacuation Center Grid
               GridView.count(
                 physics: const NeverScrollableScrollPhysics(),
                 shrinkWrap: true,
                 crossAxisCount: crossAxisCount,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
+                crossAxisSpacing: crossAxisSpacing,
+                mainAxisSpacing: mainAxisSpacing,
                 childAspectRatio: childAspectRatio,
                 children: [
                   _evacuationCenterCard(
@@ -563,7 +543,6 @@ class _WebMainDashboardState extends State<WebMainDashboard> {
                     _magsaysayCount,
                     250,
                   ),
-
                   _evacuationCenterCard(
                     "Municipal Farmer’s Covered Court",
                     _farmersCourtCount,
@@ -582,12 +561,9 @@ class _WebMainDashboardState extends State<WebMainDashboard> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 28),
               const Divider(thickness: 1.2),
               const SizedBox(height: 16),
-
-              // ⚡ Quick Access
               Text(
                 "Quick Access",
                 style: GoogleFonts.poppins(
@@ -597,7 +573,6 @@ class _WebMainDashboardState extends State<WebMainDashboard> {
                 ),
               ),
               const SizedBox(height: 14),
-
               Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -639,18 +614,36 @@ class _WebMainDashboardState extends State<WebMainDashboard> {
     );
   }
 
-  // 🧭 Drawer
   Widget _buildAdminDrawer() {
     return Drawer(
+      backgroundColor: Colors.white,
       child: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              DrawerHeader(
-                decoration: const BoxDecoration(color: Color(0xFF0D743D)),
-                child: Align(
-                  alignment: Alignment.bottomLeft,
-                  child: Text(
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [primaryGreen, darkGreen],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const CircleAvatar(
+                    radius: 28,
+                    backgroundColor: Colors.white24,
+                    child: Icon(
+                      Icons.admin_panel_settings_rounded,
+                      color: Colors.white,
+                      size: 30,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
                     'Admin Dashboard',
                     style: GoogleFonts.poppins(
                       fontSize: 22,
@@ -658,100 +651,123 @@ class _WebMainDashboardState extends State<WebMainDashboard> {
                       color: Colors.white,
                     ),
                   ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Evacuation Management System',
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      color: Colors.white.withOpacity(0.90),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Column(
+                  children: [
+                    _buildDrawerItem('Dashboard', Icons.dashboard_outlined),
+                    _buildDrawerItem(
+                      'Resident Management',
+                      Icons.people_alt_outlined,
+                    ),
+                    _buildDrawerItem('QR Code Management', Icons.qr_code_2),
+                    _buildDrawerItem(
+                      'Discharge Residents',
+                      Icons.exit_to_app_rounded,
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 10,
+                      ),
+                      child: Divider(color: Colors.grey.shade300),
+                    ),
+                    _buildDrawerItem('Reports', Icons.analytics_outlined),
+                    _buildDrawerItem(
+                      'Requests',
+                      Icons.pending_actions_outlined,
+                    ),
+                  ],
                 ),
               ),
-
-              // Drawer items
-              _buildDrawerItem('Dashboard', Icons.dashboard_outlined),
-              _buildDrawerItem(
-                'Resident Management',
-                Icons.people_alt_outlined,
-              ),
-              _buildDrawerItem('QR Code Management', Icons.qr_code_2),
-              _buildDrawerItem(
-                'Discharge Residents',
-                Icons.exit_to_app_rounded,
-              ),
-
-              const Divider(),
-
-              _buildDrawerItem('Reports', Icons.analytics_outlined),
-              _buildDrawerItem('Requests', Icons.pending_actions_outlined),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  // 🔹 Drawer Item Widget with if-else navigation logic
   Widget _buildDrawerItem(String title, IconData icon) {
     final bool isSelected = selectedPage == title;
 
-    return ListTile(
-      leading: Icon(
-        icon,
-        color: isSelected ? const Color(0xFF0D743D) : Colors.black54,
-      ),
-      tileColor: isSelected ? const Color(0xFF0D743D).withOpacity(0.1) : null,
-      title: Text(
-        title,
-        style: GoogleFonts.poppins(
-          fontSize: 16,
-          fontWeight: FontWeight.w500,
-          color: isSelected ? const Color(0xFF0D743D) : Colors.black,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Material(
+        color: isSelected ? primaryGreen.withOpacity(0.10) : Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: ListTile(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          leading: Icon(
+            icon,
+            color: isSelected ? primaryGreen : Colors.black54,
+          ),
+          title: Text(
+            title,
+            style: GoogleFonts.poppins(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              color: isSelected ? primaryGreen : Colors.black87,
+            ),
+          ),
+          onTap: () {
+            setState(() => selectedPage = title);
+            Navigator.pop(context);
+
+            if (title == 'Dashboard') {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const WebMainDashboard()),
+              );
+            } else if (title == 'Resident Management') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const WebManageResidentsPage(),
+                ),
+              );
+            } else if (title == 'QR Code Management') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const WebDisplayAllQrPage()),
+              );
+            } else if (title == 'Discharge Residents') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const WebDischargeDashboardPage(),
+                ),
+              );
+            } else if (title == 'Reports') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const WebReportsPage()),
+              );
+            } else if (title == 'Requests') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const WebRequestsPage()),
+              );
+            }
+          },
         ),
       ),
-      onTap: () {
-        setState(() {
-          selectedPage = title;
-        });
-
-        Navigator.pop(context);
-
-        // 🧭 Navigation logic
-        if (title == 'Dashboard') {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const WebMainDashboard()),
-          );
-        } else if (title == 'Resident Management') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const WebManageResidentsPage(),
-            ),
-          );
-        } else if (title == 'QR Code Management') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const WebDisplayAllQrPage(),
-            ),
-          );
-        } else if (title == 'Discharge Residents') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const WebDischargeDashboardPage(),
-            ),
-          );
-        } else if (title == 'Reports') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const WebReportsPage()),
-          );
-        } else if (title == 'Requests') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const WebRequestsPage()),
-          );
-        }
-      },
     );
   }
 
-  // 🏠 Evacuation Center Card
   Widget _evacuationCenterCard(String title, int current, int? capacity) {
     final hasCapacity = capacity != null;
     final remaining = hasCapacity ? (capacity - current) : 0;
@@ -810,7 +826,6 @@ class _WebMainDashboardState extends State<WebMainDashboard> {
     );
   }
 
-  // ⚡ Quick Access Card
   Widget _actionCard({
     required String title,
     required String subtitle,
@@ -849,7 +864,7 @@ class _WebMainDashboardState extends State<WebMainDashboard> {
                 color: Colors.white,
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, color: Color(0xFF0D743D), size: 28),
+              child: Icon(icon, color: const Color(0xFF0D743D), size: 28),
             ),
             const SizedBox(width: 16),
             Expanded(

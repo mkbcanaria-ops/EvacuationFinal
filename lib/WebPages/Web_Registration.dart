@@ -775,6 +775,35 @@ class _WebRegistrationPageWidgetWidgetState
   }
 
   Widget _buildLocationCivilRow() {
+    const List<String> barangayList = [
+      "BANAOANG",
+      "NAMALANGAN",
+      "RIZAL",
+      "SACUYYA NORTE",
+      "SACUYYA SUR",
+      "AMPANDULA",
+      "BASUG",
+      "CABANGARAN",
+      "MANUEVA",
+      "MABILBILA NORTE",
+      "MABILBILA SUR",
+      "LABUT NORTE",
+      "LABUT SUR",
+      "MARCOS",
+      "MAGSAYSAY",
+      "QUEZON",
+      "QUIRINO",
+      "PASUNGOL",
+      "BUCALAG",
+      "TABUCOLAN",
+      "CALUNGBOYAN",
+      "CASIBER",
+      "RANCHO",
+      "ORIBI",
+      "DAMMAY",
+      "NAGPANAOAN",
+    ];
+
     final List<String> mainEvacuationCenters = [
       "Municipal Evacuation Center, Magsaysay",
       "Municipal Farmers Covered Court",
@@ -825,6 +854,18 @@ class _WebRegistrationPageWidgetWidgetState
                               width: 2,
                             ),
                           ),
+                          enabledBorder: UnderlineInputBorder(
+                            borderSide: BorderSide(
+                              color: Colors.black87,
+                              width: 2,
+                            ),
+                          ),
+                          focusedBorder: UnderlineInputBorder(
+                            borderSide: BorderSide(
+                              color: Colors.black87,
+                              width: 2,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -852,6 +893,18 @@ class _WebRegistrationPageWidgetWidgetState
                               width: 2,
                             ),
                           ),
+                          enabledBorder: UnderlineInputBorder(
+                            borderSide: BorderSide(
+                              color: Colors.black87,
+                              width: 2,
+                            ),
+                          ),
+                          focusedBorder: UnderlineInputBorder(
+                            borderSide: BorderSide(
+                              color: Colors.black87,
+                              width: 2,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -863,22 +916,85 @@ class _WebRegistrationPageWidgetWidgetState
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  Flexible(
-                    child: Container(
-                      width: 180,
-                      margin: const EdgeInsets.symmetric(horizontal: 8),
-                      child: TextField(
-                        controller: _brgyController,
-                        style: GoogleFonts.poppins(fontSize: 22),
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(vertical: 8),
-                          border: UnderlineInputBorder(
-                            borderSide: BorderSide(
-                              color: Colors.black87,
-                              width: 2,
+
+                  // UPDATED BRGY PART ONLY - longer line + dropdown
+                  Container(
+                    width: 260,
+                    margin: const EdgeInsets.symmetric(horizontal: 8),
+                    child: GestureDetector(
+                      onTap: () async {
+                        final selected = await showDialog<String>(
+                          context: context,
+                          builder: (context) => SimpleDialog(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
                             ),
+                            title: Text(
+                              'Select Barangay',
+                              style: GoogleFonts.poppins(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            children: barangayList
+                                .map(
+                                  (brgy) => SimpleDialogOption(
+                                    onPressed: () =>
+                                        Navigator.pop(context, brgy),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 8,
+                                        horizontal: 6,
+                                      ),
+                                      child: Text(
+                                        brgy,
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                )
+                                .toList(),
                           ),
+                        );
+
+                        if (selected != null) {
+                          setState(() {
+                            _brgyController.text = selected;
+                          });
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 6,
+                          horizontal: 4,
+                        ),
+                        decoration: const BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(color: Colors.black87, width: 2),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _brgyController.text.isEmpty
+                                    ? 'Select Barangay'
+                                    : _brgyController.text,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 17,
+                                  color: _brgyController.text.isEmpty
+                                      ? Colors.black54
+                                      : Colors.black,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            const Icon(Icons.arrow_drop_down, size: 28),
+                          ],
                         ),
                       ),
                     ),
@@ -886,6 +1002,7 @@ class _WebRegistrationPageWidgetWidgetState
                 ],
               ),
               const SizedBox(height: 20),
+
               // Evacuation Center Dropdown
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -965,8 +1082,7 @@ class _WebRegistrationPageWidgetWidgetState
                                       ? Colors.black54
                                       : Colors.black,
                                 ),
-                                maxLines:
-                                    2, // Allow the text to wrap into 2 lines if needed
+                                maxLines: 2,
                                 overflow: TextOverflow.visible,
                               ),
                             ),
@@ -1074,6 +1190,18 @@ class _WebRegistrationPageWidgetWidgetState
                                   vertical: 8,
                                 ),
                                 border: UnderlineInputBorder(
+                                  borderSide: BorderSide(
+                                    color: Colors.black87,
+                                    width: 2,
+                                  ),
+                                ),
+                                enabledBorder: UnderlineInputBorder(
+                                  borderSide: BorderSide(
+                                    color: Colors.black87,
+                                    width: 2,
+                                  ),
+                                ),
+                                focusedBorder: UnderlineInputBorder(
                                   borderSide: BorderSide(
                                     color: Colors.black87,
                                     width: 2,

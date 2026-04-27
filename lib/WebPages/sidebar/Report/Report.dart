@@ -3,6 +3,7 @@
 import 'package:evacutaion/WebPages/WebMainDashboard.dart';
 import 'package:evacutaion/WebPages/sidebar/Discharge%20Function/WebDischargeScanner.dart';
 import 'package:evacutaion/WebPages/sidebar/Report/Report_Preview.dart';
+import 'package:evacutaion/WebPages/sidebar/Request/Request.dart';
 import 'package:evacutaion/WebPages/sidebar/ViewQRcode/WebManageQr.dart';
 import 'package:evacutaion/WebPages/sidebar/WebEditResident/WebManageResidents.dart';
 import 'package:flutter/material.dart';
@@ -20,6 +21,11 @@ class _WebReportsPageState extends State<WebReportsPage> {
 
   DateTime? _startDate;
   DateTime? _endDateTime;
+
+  final Color primaryGreen = const Color(0xFF0D743D);
+  final Color darkGreen = const Color(0xFF095B30);
+  final Color softBg = const Color(0xFFF4F7F6);
+  final Color cardBorder = const Color(0xFFE3EAE6);
 
   Future<void> _pickStartDate() async {
     final now = DateTime.now();
@@ -145,15 +151,34 @@ class _WebReportsPageState extends State<WebReportsPage> {
 
   Widget _buildAdminDrawer() {
     return Drawer(
+      backgroundColor: Colors.white,
       child: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              DrawerHeader(
-                decoration: const BoxDecoration(color: Color(0xFF0D743D)),
-                child: Align(
-                  alignment: Alignment.bottomLeft,
-                  child: Text(
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [primaryGreen, darkGreen],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const CircleAvatar(
+                    radius: 28,
+                    backgroundColor: Colors.white24,
+                    child: Icon(
+                      Icons.admin_panel_settings_rounded,
+                      color: Colors.white,
+                      size: 30,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
                     'Admin Dashboard',
                     style: GoogleFonts.poppins(
                       fontSize: 22,
@@ -161,23 +186,49 @@ class _WebReportsPageState extends State<WebReportsPage> {
                       color: Colors.white,
                     ),
                   ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Evacuation Management System',
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      color: Colors.white.withOpacity(0.90),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Column(
+                  children: [
+                    _buildDrawerItem('Dashboard', Icons.dashboard_outlined),
+                    _buildDrawerItem(
+                      'Resident Management',
+                      Icons.people_alt_outlined,
+                    ),
+                    _buildDrawerItem('QR Code Management', Icons.qr_code_2),
+                    _buildDrawerItem(
+                      'Discharge Residents',
+                      Icons.exit_to_app_rounded,
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 10,
+                      ),
+                      child: Divider(color: Colors.grey.shade300),
+                    ),
+                    _buildDrawerItem('Reports', Icons.analytics_outlined),
+                    _buildDrawerItem(
+                      'Requests',
+                      Icons.pending_actions_outlined,
+                    ),
+                  ],
                 ),
               ),
-              _buildDrawerItem('Dashboard', Icons.dashboard_outlined),
-              _buildDrawerItem(
-                'Resident Management',
-                Icons.people_alt_outlined,
-              ),
-              _buildDrawerItem('QR Code Management', Icons.qr_code_2),
-              _buildDrawerItem(
-                'Discharge Residents',
-                Icons.exit_to_app_rounded,
-              ),
-              const Divider(),
-              _buildDrawerItem('Reports', Icons.analytics_outlined),
-              _buildDrawerItem('Requests', Icons.pending_actions_outlined),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -186,48 +237,68 @@ class _WebReportsPageState extends State<WebReportsPage> {
   Widget _buildDrawerItem(String title, IconData icon) {
     final bool isSelected = selectedPage == title;
 
-    return ListTile(
-      leading: Icon(
-        icon,
-        color: isSelected ? const Color(0xFF0D743D) : Colors.black54,
-      ),
-      tileColor: isSelected ? const Color(0xFF0D743D).withOpacity(0.1) : null,
-      title: Text(
-        title,
-        style: GoogleFonts.poppins(
-          fontSize: 16,
-          fontWeight: FontWeight.w500,
-          color: isSelected ? const Color(0xFF0D743D) : Colors.black,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Material(
+        color: isSelected ? primaryGreen.withOpacity(0.10) : Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: ListTile(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          leading: Icon(
+            icon,
+            color: isSelected ? primaryGreen : Colors.black54,
+          ),
+          title: Text(
+            title,
+            style: GoogleFonts.poppins(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              color: isSelected ? primaryGreen : Colors.black87,
+            ),
+          ),
+          onTap: () {
+            setState(() => selectedPage = title);
+            Navigator.pop(context);
+
+            if (title == 'Dashboard') {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const WebMainDashboard(),
+                ),
+              );
+            } else if (title == 'Resident Management') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const WebManageResidentsPage(),
+                ),
+              );
+            } else if (title == 'QR Code Management') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const WebDisplayAllQrPage(),
+                ),
+              );
+            } else if (title == 'Reports') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const WebReportsPage()),
+              );
+            } else if (title == 'Requests') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const WebRequestsPage(),
+                ),
+              );
+            }
+          },
         ),
       ),
-      onTap: () {
-        setState(() => selectedPage = title);
-        Navigator.pop(context);
-
-        if (title == 'Dashboard') {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const WebMainDashboard()),
-          );
-        } else if (title == 'Resident Management') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const WebManageResidentsPage()),
-          );
-        } else if (title == 'QR Code Management') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const WebDisplayAllQrPage()),
-          );
-        } else if (title == 'Discharge Residents') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const WebDischargeDashboardPage(),
-            ),
-          );
-        }
-      },
     );
   }
 
@@ -236,9 +307,11 @@ class _WebReportsPageState extends State<WebReportsPage> {
     final isWide = MediaQuery.of(context).size.width > 820;
 
     return Scaffold(
+      backgroundColor: softBg,
       drawer: _buildAdminDrawer(),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0D743D),
+        elevation: 0,
+        backgroundColor: primaryGreen,
         centerTitle: true,
         iconTheme: const IconThemeData(color: Colors.white),
         title: Text(
@@ -251,26 +324,27 @@ class _WebReportsPageState extends State<WebReportsPage> {
       ),
       body: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1100),
-          child: Padding(
-            padding: EdgeInsets.all(isWide ? 40 : 20),
+          constraints: const BoxConstraints(maxWidth: 1150),
+          child: SingleChildScrollView(
+            padding: EdgeInsets.all(isWide ? 32 : 18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  "Evacuation Population Report",
-                  style: GoogleFonts.poppins(
-                    fontSize: isWide ? 26 : 22,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 25),
+                _buildTopBanner(),
+                const SizedBox(height: 24),
                 Container(
-                  padding: EdgeInsets.all(isWide ? 25 : 18),
+                  padding: EdgeInsets.all(isWide ? 28 : 18),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.grey.shade300),
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: cardBorder),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.04),
+                        blurRadius: 16,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -278,27 +352,41 @@ class _WebReportsPageState extends State<WebReportsPage> {
                       Text(
                         "Select Report Period",
                         style: GoogleFonts.poppins(
-                          fontSize: isWide ? 20 : 18,
-                          fontWeight: FontWeight.w600,
+                          fontSize: isWide ? 21 : 18,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black87,
                         ),
                       ),
-                      const SizedBox(height: 15),
+                      const SizedBox(height: 8),
+                      Text(
+                        "Choose the start date and end date with time to preview the evacuation population report.",
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          height: 1.5,
+                          color: Colors.black54,
+                        ),
+                      ),
+                      const SizedBox(height: 22),
                       isWide
                           ? Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Expanded(
                                   child: _dateField(
                                     "Start Date",
                                     _startDate,
                                     _pickStartDate,
+                                    Icons.calendar_today,
                                   ),
                                 ),
-                                const SizedBox(width: 25),
+                                const SizedBox(width: 20),
                                 Expanded(
-                                  child: _dateTimeField(
+                                  child: _dateField(
                                     "End Date & Time",
                                     _endDateTime,
                                     _pickEndDateTime,
+                                    Icons.access_time,
+                                    isDateTime: true,
                                   ),
                                 ),
                               ],
@@ -309,19 +397,24 @@ class _WebReportsPageState extends State<WebReportsPage> {
                                   "Start Date",
                                   _startDate,
                                   _pickStartDate,
+                                  Icons.calendar_today,
                                 ),
                                 const SizedBox(height: 15),
-                                _dateTimeField(
+                                _dateField(
                                   "End Date & Time",
                                   _endDateTime,
                                   _pickEndDateTime,
+                                  Icons.access_time,
+                                  isDateTime: true,
                                 ),
                               ],
                             ),
-                      const SizedBox(height: 25),
-                      Center(
+                      const SizedBox(height: 26),
+                      Align(
+                        alignment: Alignment.center,
                         child: SizedBox(
-                          width: isWide ? 300 : double.infinity,
+                          width: isWide ? 280 : double.infinity,
+                          height: 52,
                           child: ElevatedButton.icon(
                             onPressed: () {
                               if (_startDate == null || _endDateTime == null) {
@@ -361,14 +454,18 @@ class _WebReportsPageState extends State<WebReportsPage> {
                               color: Colors.white,
                             ),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF0D743D),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              elevation: 0,
+                              backgroundColor: primaryGreen,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
                             ),
                             label: Text(
-                              "Preview",
+                              "Preview Report",
                               style: GoogleFonts.poppins(
                                 color: Colors.white,
-                                fontSize: 16,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
@@ -385,59 +482,124 @@ class _WebReportsPageState extends State<WebReportsPage> {
     );
   }
 
-  Widget _dateField(String label, DateTime? date, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.grey.shade400),
-          color: Colors.white,
+  Widget _buildTopBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        gradient: LinearGradient(
+          colors: [primaryGreen, darkGreen],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        child: Row(
-          children: [
-            const Icon(
-              Icons.calendar_today,
-              size: 18,
-              color: Color(0xFF0D743D),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                date == null ? label : _formatDate(date),
-                style: GoogleFonts.poppins(
-                  fontSize: 15,
-                  color: date == null ? Colors.grey : Colors.black,
+        boxShadow: [
+          BoxShadow(
+            color: primaryGreen.withOpacity(0.18),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        runSpacing: 16,
+        spacing: 16,
+        children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 650),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Evacuation Population Report',
+                  style: GoogleFonts.poppins(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
                 ),
-              ),
+                const SizedBox(height: 8),
+                Text(
+                  'Generate and preview evacuation reports based on your selected date range and time period.',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    height: 1.5,
+                    color: Colors.white.withOpacity(0.92),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.white.withOpacity(0.15)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.analytics_rounded, color: Colors.white),
+                const SizedBox(width: 10),
+                Text(
+                  'Reports Module',
+                  style: GoogleFonts.poppins(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _dateTimeField(String label, DateTime? dateTime, VoidCallback onTap) {
-    return GestureDetector(
+  Widget _dateField(
+    String label,
+    DateTime? date,
+    VoidCallback onTap,
+    IconData icon, {
+    bool isDateTime = false,
+  }) {
+    final displayText = date == null
+        ? label
+        : (isDateTime ? _formatDateTime(date) : _formatDate(date));
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.grey.shade400),
-          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: cardBorder),
+          color: const Color(0xFFF9FBFA),
         ),
         child: Row(
           children: [
-            const Icon(Icons.access_time, size: 18, color: Color(0xFF0D743D)),
-            const SizedBox(width: 10),
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: primaryGreen.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, size: 20, color: primaryGreen),
+            ),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
-                dateTime == null ? label : _formatDateTime(dateTime),
+                displayText,
                 style: GoogleFonts.poppins(
                   fontSize: 15,
-                  color: dateTime == null ? Colors.grey : Colors.black,
+                  color: date == null ? Colors.grey[600] : Colors.black87,
+                  fontWeight: date == null ? FontWeight.w400 : FontWeight.w500,
                 ),
               ),
             ),

@@ -9,14 +9,14 @@ import 'package:printing/printing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
-class ViewQrCodePage extends StatefulWidget {
-  const ViewQrCodePage({super.key});
+class ResidentViewQrCodePage extends StatefulWidget {
+  const ResidentViewQrCodePage({super.key});
 
   @override
-  State<ViewQrCodePage> createState() => _ViewQrCodePageState();
+  State<ResidentViewQrCodePage> createState() => _ResidentViewQrCodePageState();
 }
 
-class _ViewQrCodePageState extends State<ViewQrCodePage> {
+class _ResidentViewQrCodePageState extends State<ResidentViewQrCodePage> {
   String firstName = '';
   String middleName = '';
   String lastName = '';
