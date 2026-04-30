@@ -79,9 +79,9 @@ class _WLandingPageState extends State<WLandingPage> {
 
   Widget _buildGetStartedButton({
     required bool isMobile,
-    bool fullWidth = false,
+    bool compact = false,
   }) {
-    final button = ElevatedButton(
+    return ElevatedButton(
       onPressed: () {
         Navigator.push(
           context,
@@ -92,29 +92,36 @@ class _WLandingPageState extends State<WLandingPage> {
         backgroundColor: Colors.white,
         elevation: 0,
         padding: EdgeInsets.symmetric(
-          horizontal: isMobile ? 16 : 22,
-          vertical: isMobile ? 11 : 14,
+          horizontal: compact
+              ? 12
+              : isMobile
+              ? 16
+              : 22,
+          vertical: compact
+              ? 10
+              : isMobile
+              ? 11
+              : 14,
         ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        minimumSize: Size(compact ? 92 : 120, compact ? 38 : 44),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
       ),
       child: FittedBox(
         fit: BoxFit.scaleDown,
         child: Text(
           'Get Started',
           style: GoogleFonts.poppins(
-            fontSize: isMobile ? 13 : 14,
+            fontSize: compact
+                ? 12
+                : isMobile
+                ? 13
+                : 14,
             fontWeight: FontWeight.w700,
             color: const Color(0xFF0D743D),
           ),
         ),
       ),
     );
-
-    if (fullWidth) {
-      return SizedBox(width: double.infinity, child: button);
-    }
-
-    return button;
   }
 
   Widget _buildTopFloatingBar(bool isMobile) {
@@ -122,11 +129,11 @@ class _WLandingPageState extends State<WLandingPage> {
       builder: (context, constraints) {
         final compact = isMobile || constraints.maxWidth < 520;
 
-        final brandBox = Container(
-          width: compact ? double.infinity : null,
+        return Container(
+          width: double.infinity,
           padding: EdgeInsets.symmetric(
-            horizontal: compact ? 10 : 12,
-            vertical: compact ? 8 : 6,
+            horizontal: compact ? 10 : 14,
+            vertical: compact ? 8 : 10,
           ),
           decoration: BoxDecoration(
             color: Colors.white.withOpacity(0.18),
@@ -134,7 +141,6 @@ class _WLandingPageState extends State<WLandingPage> {
             border: Border.all(color: Colors.white.withOpacity(0.18)),
           ),
           child: Row(
-            mainAxisSize: compact ? MainAxisSize.max : MainAxisSize.min,
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
@@ -158,20 +164,10 @@ class _WLandingPageState extends State<WLandingPage> {
                   ),
                 ),
               ),
+              const SizedBox(width: 10),
+              _buildGetStartedButton(isMobile: isMobile, compact: compact),
             ],
           ),
-        );
-
-        if (compact) {
-          return brandBox;
-        }
-
-        return Row(
-          children: [
-            Expanded(child: brandBox),
-            const SizedBox(width: 12),
-            _buildGetStartedButton(isMobile: isMobile),
-          ],
         );
       },
     );
