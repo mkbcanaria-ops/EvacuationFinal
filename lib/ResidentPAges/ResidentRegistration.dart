@@ -1,8 +1,11 @@
-// ignore_for_file: use_build_context_synchronously, unused_local_variable
+// ignore_for_file: use_build_context_synchronously, unused_local_variable, unused_import
+
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui';
+
 import 'package:evacutaion/WebPages/WebDisplayQr.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -37,7 +40,7 @@ class ResidentRegistrationPage extends StatelessWidget {
           ),
         ),
       ),
-      body: const Center(child: ResidentRegistrationPageWidget()),
+      body: const ResidentRegistrationPageWidget(),
     );
   }
 }
@@ -52,18 +55,22 @@ class ResidentRegistrationPageWidget extends StatefulWidget {
 
 class _ResidentRegistrationPageWidgetState
     extends State<ResidentRegistrationPageWidget> {
-  // Zoom settings
-  double _currentScale = 0.7; // Updated to be even more zoomed in
-  final double _minScale = 0.2;
-  final double _maxScale = 3.0;
-  final double _zoomStep = 0.1;
-  final ScrollController _horizontalController = ScrollController();
-  final ScrollController _verticalController = ScrollController();
-  bool _isMousePanning = false;
-  int? _activePointer;
-  final double _contentWidth = 1560.0; // width of the large form content
-  bool _didCenterOnce = false;
-  double _baseScale = 1.0;
+  // -------------------- PINCH ZOOM / FIT SCREEN SETTINGS --------------------
+  final TransformationController _transformationController =
+      TransformationController();
+
+  final GlobalKey _formCanvasKey = GlobalKey();
+
+  static const double _formWidth = 1760.0;
+  double _formHeight = 2200.0;
+
+  final double _minScale = 0.05;
+  final double _maxScale = 4.0;
+  final double _zoomStep = 0.15;
+
+  double _fitScale = 0.4;
+  bool _zoomInitialized = false;
+  Size? _lastViewportSize;
 
   // Controllers
   final TextEditingController _disasterController = TextEditingController();
@@ -76,21 +83,21 @@ class _ResidentRegistrationPageWidgetState
 
   final TextEditingController _evacSiteController = TextEditingController();
   final TextEditingController _civilOtherController = TextEditingController();
-  // -------------------- CONTROLLERS --------------------
+
   final TextEditingController _headSurnameController = TextEditingController();
   final TextEditingController _headFirstController = TextEditingController();
   final TextEditingController _headMiddleController = TextEditingController();
   final TextEditingController _headAgeController = TextEditingController();
-  final TextEditingController _headSexController =
-      TextEditingController(); // Holds "M" or "F"
+  final TextEditingController _headSexController = TextEditingController();
   final TextEditingController _dobController = TextEditingController();
   final TextEditingController _occupationController = TextEditingController();
   final TextEditingController _monthlyIncomeController =
       TextEditingController();
-  // -------------------- CONTROLLERS --------------------
+
   final List<Map<String, TextEditingController>> _familyRows = [];
+
   File? imageFile;
-  Uint8List? imageBytes; // ✅ ADD THIS LINE HERE - for storing image bytes
+  Uint8List? imageBytes;
 
   // Civil Status
   bool _single = false;
@@ -98,7 +105,9 @@ class _ResidentRegistrationPageWidgetState
   bool _widowed = false;
   bool _is4PsBeneficiary = false;
   bool _isIP = false;
-  TextEditingController _ipTypeController = TextEditingController();
+
+  final TextEditingController _ipTypeController = TextEditingController();
+
   String _formatMonth(int month) {
     const months = [
       'Jan',
@@ -120,51 +129,164 @@ class _ResidentRegistrationPageWidgetState
   @override
   void initState() {
     super.initState();
+
     _dateController.text = DateFormat(
       'MMMM dd, yyyy • hh:mm a',
     ).format(DateTime.now());
+
     for (int i = 0; i < 5; i++) {
       _familyRows.add({
         'name': TextEditingController(),
         'relation': TextEditingController(),
-        'birthdate': TextEditingController(), // ✅ NEW DOB CONTROLLER
+        'birthdate': TextEditingController(),
         'age': TextEditingController(),
         'gender': TextEditingController(),
         'civilStatus': TextEditingController(),
         'education': TextEditingController(),
         'skills': TextEditingController(),
         'remarks': TextEditingController(),
-        'code': TextEditingController(), // ✅ Added for the new Code column
+        'code': TextEditingController(),
       });
     }
   }
 
-  void _zoomIn() {
-    setState(() {
-      _currentScale = (_currentScale + _zoomStep).clamp(_minScale, _maxScale);
-      _didCenterOnce = false; // recenter after zoom changes
+  // -------------------- FIT SCREEN FUNCTIONS --------------------
+
+  double _safeWidth(BoxConstraints constraints) {
+    if (constraints.maxWidth.isFinite && constraints.maxWidth > 0) {
+      return constraints.maxWidth;
+    }
+    return MediaQuery.of(context).size.width;
+  }
+
+  double _safeHeight(BoxConstraints constraints) {
+    if (constraints.maxHeight.isFinite && constraints.maxHeight > 0) {
+      return constraints.maxHeight;
+    }
+    return MediaQuery.of(context).size.height;
+  }
+
+  double _calculateFitScale(BoxConstraints constraints) {
+    final screenWidth = _safeWidth(constraints);
+    final screenHeight = _safeHeight(constraints);
+
+    const double horizontalPadding = 24;
+    const double verticalPadding = 24;
+
+    final widthScale = (screenWidth - horizontalPadding) / _formWidth;
+    final heightScale = (screenHeight - verticalPadding) / _formHeight;
+
+    final scale = math.min(widthScale, heightScale);
+
+    return scale.clamp(_minScale, _maxScale).toDouble();
+  }
+
+  Matrix4 _buildFitMatrix(BoxConstraints constraints, double scale) {
+    final screenWidth = _safeWidth(constraints);
+    final screenHeight = _safeHeight(constraints);
+
+    final scaledWidth = _formWidth * scale;
+    final scaledHeight = _formHeight * scale;
+
+    final dx = math.max((screenWidth - scaledWidth) / 2, 0).toDouble();
+    final dy = math.max((screenHeight - scaledHeight) / 2, 0).toDouble();
+
+    return Matrix4.identity()
+      ..translate(dx, dy)
+      ..scale(scale);
+  }
+
+  void _syncFitToScreen(BoxConstraints constraints) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      final renderBox =
+          _formCanvasKey.currentContext?.findRenderObject() as RenderBox?;
+
+      final measuredHeight = renderBox?.size.height ?? _formHeight;
+
+      final viewportSize = Size(
+        _safeWidth(constraints),
+        _safeHeight(constraints),
+      );
+
+      final viewportChanged =
+          _lastViewportSize == null ||
+          (_lastViewportSize!.width - viewportSize.width).abs() > 1 ||
+          (_lastViewportSize!.height - viewportSize.height).abs() > 1;
+
+      final heightChanged = (measuredHeight - _formHeight).abs() > 1;
+
+      if (!_zoomInitialized || viewportChanged) {
+        setState(() {
+          _formHeight = measuredHeight;
+          _lastViewportSize = viewportSize;
+          _fitScale = _calculateFitScale(constraints);
+          _transformationController.value = _buildFitMatrix(
+            constraints,
+            _fitScale,
+          );
+          _zoomInitialized = true;
+        });
+      } else if (heightChanged) {
+        setState(() {
+          _formHeight = measuredHeight;
+        });
+      }
     });
+  }
+
+  void _setZoomScale(double newScale) {
+    final matrix = Matrix4.copy(_transformationController.value);
+    final currentScale = matrix.getMaxScaleOnAxis();
+
+    if (currentScale == 0) return;
+
+    final ratio = newScale / currentScale;
+
+    setState(() {
+      _transformationController.value = matrix..scale(ratio);
+    });
+  }
+
+  void _zoomIn() {
+    final currentScale = _transformationController.value.getMaxScaleOnAxis();
+    final newScale = (currentScale + _zoomStep).clamp(_minScale, _maxScale);
+    _setZoomScale(newScale.toDouble());
   }
 
   void _zoomOut() {
-    setState(() {
-      _currentScale = (_currentScale - _zoomStep).clamp(_minScale, _maxScale);
-      _didCenterOnce = false;
-    });
+    final currentScale = _transformationController.value.getMaxScaleOnAxis();
+    final newScale = (currentScale - _zoomStep).clamp(_minScale, _maxScale);
+    _setZoomScale(newScale.toDouble());
   }
 
   void _resetZoom() {
+    final size = MediaQuery.of(context).size;
+
+    final constraints = BoxConstraints(
+      maxWidth: size.width,
+      maxHeight: size.height,
+    );
+
+    final renderBox =
+        _formCanvasKey.currentContext?.findRenderObject() as RenderBox?;
+
+    if (renderBox != null) {
+      _formHeight = renderBox.size.height;
+    }
+
     setState(() {
-      _currentScale = 0.6;
-      _didCenterOnce = false;
+      _fitScale = _calculateFitScale(constraints);
+      _transformationController.value = _buildFitMatrix(constraints, _fitScale);
     });
   }
 
   Future<void> _registerSave() async {
     final supabase = Supabase.instance.client;
 
-    // ✅ Get current logged-in user UID
     final currentUser = supabase.auth.currentUser;
+
     if (currentUser == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -174,9 +296,9 @@ class _ResidentRegistrationPageWidgetState
       );
       return;
     }
+
     final uid = currentUser.id;
 
-    // ✅ Get values from controllers
     final disasterType = _disasterController.text.trim();
     final date = _dateController.text.trim();
     final city = _cityController.text.trim();
@@ -184,20 +306,18 @@ class _ResidentRegistrationPageWidgetState
     final barangay = _brgyController.text.trim();
     final site = _evacSiteController.text.trim();
 
-    // ✅ Head of Family fields
     final headSurname = _headSurnameController.text.trim();
     final headFirst = _headFirstController.text.trim();
     final headMiddle = _headMiddleController.text.trim();
     final headAge = _headAgeController.text.trim();
     final headSex = _headSexController.text.trim();
 
-    // ✅ Additional Info fields
     final dob = _dobController.text.trim();
     final occupation = _occupationController.text.trim();
     final monthlyIncome = _monthlyIncomeController.text.trim();
 
-    // ✅ Determine selected civil status
     String civilStatus = '';
+
     if (_single) {
       civilStatus = 'Single';
     } else if (_married) {
@@ -208,18 +328,15 @@ class _ResidentRegistrationPageWidgetState
       civilStatus = _civilOtherController.text.trim();
     }
 
-    // ✅ Beneficiary and IP fields
     final is4Ps = _is4PsBeneficiary;
     final isIP = _isIP;
     final ipType = _ipTypeController.text.trim();
 
-    // ✅ Get current date & time
     final now = DateTime.now();
     final formattedDateRegistered = DateFormat(
       'MMMM dd, yyyy • hh:mm a',
     ).format(now);
 
-    // ✅ Validation
     if (disasterType.isEmpty || date.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -232,7 +349,6 @@ class _ResidentRegistrationPageWidgetState
       return;
     }
 
-    // ✅ Show loading indicator
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -240,7 +356,6 @@ class _ResidentRegistrationPageWidgetState
     );
 
     try {
-      // ✅ Check if user already submitted
       final existing = await supabase
           .from('Registration_Table')
           .select('Registration_ID')
@@ -249,7 +364,9 @@ class _ResidentRegistrationPageWidgetState
 
       if (existing != null) {
         if (!mounted) return;
+
         Navigator.of(context).pop();
+
         showDialog(
           context: context,
           builder: (_) => AlertDialog(
@@ -257,8 +374,8 @@ class _ResidentRegistrationPageWidgetState
               borderRadius: BorderRadius.circular(20),
             ),
             backgroundColor: Colors.white,
-            title: Row(
-              children: const [
+            title: const Row(
+              children: [
                 Icon(Icons.info_outline, color: Colors.orange),
                 SizedBox(width: 10),
                 Text(
@@ -300,10 +417,10 @@ class _ResidentRegistrationPageWidgetState
             ],
           ),
         );
+
         return;
       }
 
-      // ✅ Insert into Registration_Table
       final inserted = await supabase
           .from('Registration_Table')
           .insert({
@@ -333,7 +450,6 @@ class _ResidentRegistrationPageWidgetState
 
       final registrationId = inserted['Registration_ID'];
 
-      // ✅ Upload head image
       String? imageUrl;
       final fileName =
           'head_${uid}_${DateTime.now().millisecondsSinceEpoch}.jpg';
@@ -346,6 +462,7 @@ class _ResidentRegistrationPageWidgetState
               imageBytes!,
               fileOptions: const FileOptions(contentType: 'image/jpeg'),
             );
+
         imageUrl = supabase.storage.from('headimage').getPublicUrl(fileName);
       } else if (imageFile != null) {
         await supabase.storage
@@ -355,6 +472,7 @@ class _ResidentRegistrationPageWidgetState
               imageFile!,
               fileOptions: const FileOptions(contentType: 'image/jpeg'),
             );
+
         imageUrl = supabase.storage.from('headimage').getPublicUrl(fileName);
       }
 
@@ -365,12 +483,12 @@ class _ResidentRegistrationPageWidgetState
             .eq('UID', uid);
       }
 
-      // ✅ Generate QR Code
       final qrPainter = QrPainter(
         data: uid,
         version: QrVersions.auto,
         gapless: true,
       );
+
       final imageData = await qrPainter.toImageData(300);
       final qrBytes = imageData!.buffer.asUint8List();
       final qrBase64 = base64Encode(qrBytes);
@@ -380,7 +498,6 @@ class _ResidentRegistrationPageWidgetState
           .update({'QR_Code': qrBase64})
           .eq('UID', uid);
 
-      // ✅ Insert Family Members with DOB and auto-calculated Age
       for (var row in _familyRows) {
         final name = row['name']!.text.trim();
         final relation = row['relation']!.text.trim();
@@ -400,10 +517,11 @@ class _ResidentRegistrationPageWidgetState
         }
 
         int age = 0;
+
         if (dobText.isNotEmpty) {
           try {
             final birthDate = DateTime.parse(dobText);
-            age = int.parse(calculateAge(birthDate));
+            age = _calculateAge(birthDate);
           } catch (_) {
             age = 0;
           }
@@ -414,8 +532,8 @@ class _ResidentRegistrationPageWidgetState
           'Registration_ID': registrationId,
           'Family_Member': name,
           'Relation': relation,
-          'Date_of_Birth': dobText, // 🔥 Store DOB
-          'Age': age, // 🔥 Auto-calculated
+          'Date_of_Birth': dobText,
+          'Age': age,
           'Gender': gender,
           'Civil_Status': civil,
           'Education': education,
@@ -425,7 +543,6 @@ class _ResidentRegistrationPageWidgetState
         });
       }
 
-      // ✅ Fetch full inserted record
       final fullRecord = await supabase
           .from('Registration_Table')
           .select()
@@ -433,9 +550,9 @@ class _ResidentRegistrationPageWidgetState
           .single();
 
       if (!mounted) return;
+
       Navigator.of(context).pop();
 
-      // ✅ Navigate to QR Code display page
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -449,7 +566,9 @@ class _ResidentRegistrationPageWidgetState
       );
     } catch (error) {
       if (!mounted) return;
+
       Navigator.of(context).pop();
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Error saving data: $error'),
@@ -459,203 +578,133 @@ class _ResidentRegistrationPageWidgetState
     }
   }
 
+  Widget _buildFormCanvas() {
+    return Container(
+      key: _formCanvasKey,
+      width: _formWidth,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+      color: Colors.white,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildTitleSection(),
+          const SizedBox(height: 24),
+          _buildDisasterDateSection(),
+          const SizedBox(height: 60),
+          _buildLocationCivilRow(),
+          const SizedBox(height: 60),
+          _buildHeadOfFamilyRow(),
+          const SizedBox(height: 60),
+          _buildAdditionalInfoRow(),
+          const SizedBox(height: 50),
+          _buildBeneficiaryEthnicityRow(),
+          const SizedBox(height: 60),
+          _buildFamilyMembersTable(),
+          const SizedBox(height: 10),
+          _buildInformationBox(),
+          const SizedBox(height: 40),
+          _buildHeadOfFamilyImageSection(),
+          const SizedBox(height: 40),
+          _buildDateRegisteredSection(),
+          const SizedBox(height: 40),
+          _buildSubmitButton(),
+          const SizedBox(height: 80),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Listener allows mouse-button panning and captures pointer events for desktop
     return LayoutBuilder(
       builder: (context, constraints) {
-        // After layout, center the scroll position once so the content appears visually centered
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!_didCenterOnce && _horizontalController.hasClients) {
-            final viewportWidth = constraints.maxWidth;
-            final scaledContentW = _contentWidth * _currentScale;
-            final offset = ((scaledContentW - viewportWidth) / 2).clamp(
-              0.0,
-              double.infinity,
-            );
-            if (_horizontalController.position.maxScrollExtent > 0) {
-              final target = offset.clamp(
-                0.0,
-                _horizontalController.position.maxScrollExtent,
-              );
-              _horizontalController.jumpTo(target);
-            }
-            _didCenterOnce = true;
-          }
-        });
+        _syncFitToScreen(constraints);
 
-        return Listener(
-          behavior: HitTestBehavior.opaque,
-          onPointerDown: (event) {
-            if (event.kind == PointerDeviceKind.mouse &&
-                (event.buttons & kSecondaryMouseButton) != 0) {
-              _isMousePanning = true;
-              _activePointer = event.pointer;
-            }
-          },
-          onPointerUp: (event) {
-            if (_activePointer == event.pointer) {
-              _isMousePanning = false;
-              _activePointer = null;
-            }
-          },
-          onPointerCancel: (event) {
-            if (_activePointer == event.pointer) {
-              _isMousePanning = false;
-              _activePointer = null;
-            }
-          },
-          onPointerMove: (event) {
-            // right-mouse drag panning for desktop
-            if (_isMousePanning && _activePointer == event.pointer) {
-              final delta = event.delta;
-              if (_horizontalController.hasClients) {
-                final newX = (_horizontalController.offset - delta.dx).clamp(
-                  0.0,
-                  _horizontalController.position.maxScrollExtent,
-                );
-                _horizontalController.jumpTo(newX);
-              }
-              if (_verticalController.hasClients) {
-                final newY = (_verticalController.offset - delta.dy).clamp(
-                  0.0,
-                  _verticalController.position.maxScrollExtent,
-                );
-                _verticalController.jumpTo(newY);
-              }
-            }
-          },
-          child: GestureDetector(
-            // preserve pinch-to-zoom behavior
-            onScaleStart: (details) {
-              _baseScale = _currentScale;
-            },
-            onScaleUpdate: (details) {
-              setState(() {
-                _currentScale = (_baseScale * details.scale).clamp(
-                  0.2,
-                  _maxScale,
-                );
-                _didCenterOnce = false; // recenter after pinch scale changes
-              });
-            },
-
-            // allow touch horizontal swipe panning
-            onHorizontalDragUpdate: (details) {
-              if (_horizontalController.hasClients) {
-                final dx =
-                    details.delta.dx / (_currentScale == 0 ? 1 : _currentScale);
-                final newOffset = (_horizontalController.offset - dx).clamp(
-                  0.0,
-                  _horizontalController.position.maxScrollExtent,
-                );
-                _horizontalController.jumpTo(newOffset);
-              }
-            },
-
-            child: Stack(
-              children: [
-                // vertical scroll -> horizontal scroll -> scaled content centered
-                SingleChildScrollView(
-                  controller: _verticalController,
-                  scrollDirection: Axis.vertical,
-                  child: SingleChildScrollView(
-                    controller: _horizontalController,
-                    scrollDirection: Axis.horizontal,
-                    // enable horizontal scrolling (touch, wheel, fling)
-                    physics: const ClampingScrollPhysics(),
-                    child: Center(
-                      // Center ensures the content visually sits in the middle when viewport is wider
-                      child: Transform.scale(
-                        scale: _currentScale,
-                        alignment: Alignment.center,
-                        child: Container(
-                          width: _contentWidth,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 18,
-                          ),
-                          color: Colors.white,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildTitleSection(),
-                              const SizedBox(height: 24),
-                              _buildDisasterDateSection(),
-                              const SizedBox(height: 60),
-                              _buildLocationCivilRow(),
-                              const SizedBox(height: 60),
-                              _buildHeadOfFamilyRow(),
-                              const SizedBox(height: 60),
-                              _buildAdditionalInfoRow(),
-                              const SizedBox(height: 50),
-                              _buildBeneficiaryEthnicityRow(),
-                              const SizedBox(height: 60),
-                              _buildFamilyMembersTable(),
-                              const SizedBox(height: 10),
-                              _buildInformationBox(),
-                              const SizedBox(height: 40),
-                              _buildHeadOfFamilyImageSection(),
-                              const SizedBox(height: 40),
-                              _buildDateRegisteredSection(),
-                              const SizedBox(height: 40),
-                              _buildSubmitButton(),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: ClipRect(
+                child: InteractiveViewer(
+                  transformationController: _transformationController,
+                  minScale: _minScale,
+                  maxScale: _maxScale,
+                  panEnabled: true,
+                  scaleEnabled: true,
+                  constrained: false,
+                  alignment: Alignment.topLeft,
+                  boundaryMargin: const EdgeInsets.all(5000),
+                  clipBehavior: Clip.none,
+                  child: _buildFormCanvas(),
                 ),
-
-                /// floating zoom buttons (unchanged)
-                Positioned(
-                  bottom: 20,
-                  right: 20,
-                  child: Column(
-                    children: [
-                      _buildZoomButton(
-                        Icons.add,
-                        Colors.green,
-                        _zoomIn,
-                        'Zoom In',
-                      ),
-                      const SizedBox(height: 6),
-                      _buildZoomButton(
-                        Icons.remove,
-                        Colors.orange,
-                        _zoomOut,
-                        'Zoom Out',
-                      ),
-                      const SizedBox(height: 6),
-                      _buildZoomButton(
-                        Icons.refresh,
-                        Colors.redAccent,
-                        _resetZoom,
-                        'Reset Zoom',
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
+
+            Positioned(
+              top: 14,
+              left: 14,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.92),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.black12),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black12,
+                      blurRadius: 8,
+                      offset: Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  'Pinch to zoom • Drag to move • Tap fit to reset',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: Colors.black87,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+
+            Positioned(
+              bottom: 20,
+              right: 20,
+              child: Column(
+                children: [
+                  _buildZoomButton(Icons.add, Colors.green, _zoomIn, 'Zoom In'),
+                  const SizedBox(height: 6),
+                  _buildZoomButton(
+                    Icons.remove,
+                    Colors.orange,
+                    _zoomOut,
+                    'Zoom Out',
+                  ),
+                  const SizedBox(height: 6),
+                  _buildZoomButton(
+                    Icons.fit_screen,
+                    const Color(0xFF0D743D),
+                    _resetZoom,
+                    'Fit to Screen',
+                  ),
+                ],
+              ),
+            ),
+          ],
         );
       },
     );
   }
 
-  // ------------- UPDATED WIDGET: TYPE OF DISASTER & DATE OF OCCURRENCE (ALIGNED FAR LEFT) -------------
   Widget _buildDisasterDateSection() {
     return Padding(
-      padding: const EdgeInsets.only(
-        left: 10.0,
-        top: 20.0,
-      ), // ✅ moved closer to the left
+      padding: const EdgeInsets.only(left: 10.0, top: 20.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Type of Disaster (inline)
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -682,10 +731,7 @@ class _ResidentRegistrationPageWidgetState
               ),
             ],
           ),
-
           const SizedBox(height: 20),
-
-          // Date of Occurrence (inline)
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -827,7 +873,6 @@ class _ResidentRegistrationPageWidgetState
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-
                   Flexible(
                     child: Container(
                       width: 180,
@@ -860,7 +905,6 @@ class _ResidentRegistrationPageWidgetState
                       ),
                     ),
                   ),
-
                   Text(
                     '/',
                     style: GoogleFonts.poppins(
@@ -868,7 +912,6 @@ class _ResidentRegistrationPageWidgetState
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-
                   Flexible(
                     child: Container(
                       width: 180,
@@ -901,7 +944,6 @@ class _ResidentRegistrationPageWidgetState
                       ),
                     ),
                   ),
-
                   Text(
                     '/',
                     style: GoogleFonts.poppins(
@@ -909,8 +951,6 @@ class _ResidentRegistrationPageWidgetState
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-
-                  // UPDATED: BRGY dropdown
                   Container(
                     width: 260,
                     margin: const EdgeInsets.symmetric(horizontal: 8),
@@ -994,9 +1034,7 @@ class _ResidentRegistrationPageWidgetState
                   ),
                 ],
               ),
-
               const SizedBox(height: 20),
-
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1092,9 +1130,7 @@ class _ResidentRegistrationPageWidgetState
             ],
           ),
         ),
-
         const SizedBox(width: 60),
-
         Expanded(
           child: Padding(
             padding: const EdgeInsets.only(left: 180.0),
@@ -1217,7 +1253,6 @@ class _ResidentRegistrationPageWidgetState
   }
 
   Widget _buildHeadOfFamilyRow() {
-    // Local inline checkbox widget
     Widget buildCheckBox(String label, bool value, Function(bool?) onChanged) {
       return Row(
         children: [
@@ -1231,7 +1266,6 @@ class _ResidentRegistrationPageWidgetState
       );
     }
 
-    // Local inline field builder (for Age)
     Widget buildInlineField(
       String label,
       TextEditingController controller, {
@@ -1259,11 +1293,15 @@ class _ResidentRegistrationPageWidgetState
               onChanged: (value) => setState(() {}),
               decoration: InputDecoration(
                 border: const UnderlineInputBorder(),
-                errorText: isValidAge ? null : "Must be 18+",
+                errorText: controller.text.isEmpty || isValidAge
+                    ? null
+                    : "Must be 18+",
               ),
               style: GoogleFonts.poppins(
                 fontSize: fontSize,
-                color: isValidAge ? Colors.black : Colors.red,
+                color: controller.text.isEmpty || isValidAge
+                    ? Colors.black
+                    : Colors.red,
               ),
             ),
           ),
@@ -1274,7 +1312,6 @@ class _ResidentRegistrationPageWidgetState
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // LEFT : HEADER + NAME FIELDS
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1297,8 +1334,6 @@ class _ResidentRegistrationPageWidgetState
                 ),
               ),
               const SizedBox(height: 12),
-
-              // **NAME ROW**
               Row(
                 children: [
                   SizedBox(
@@ -1341,15 +1376,12 @@ class _ResidentRegistrationPageWidgetState
             ],
           ),
         ),
-
-        // RIGHT : AGE + SEX
         Expanded(
           child: Padding(
             padding: const EdgeInsets.only(left: 100.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // AGE (MUST BE 18+)
                 buildInlineField(
                   "Age:",
                   _headAgeController,
@@ -1357,8 +1389,6 @@ class _ResidentRegistrationPageWidgetState
                   labelFontSize: 22,
                 ),
                 const SizedBox(height: 16),
-
-                // SEX SELECTION
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
@@ -1370,16 +1400,12 @@ class _ResidentRegistrationPageWidgetState
                       ),
                     ),
                     const SizedBox(width: 12),
-
-                    // Male
                     buildCheckBox('M', _headSexController.text == 'M', (val) {
                       setState(() {
                         _headSexController.text = val! ? 'M' : '';
                       });
                     }),
                     const SizedBox(width: 10),
-
-                    // Female
                     buildCheckBox('F', _headSexController.text == 'F', (val) {
                       setState(() {
                         _headSexController.text = val! ? 'F' : '';
@@ -1400,7 +1426,6 @@ class _ResidentRegistrationPageWidgetState
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // DATE OF BIRTH
         Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -1429,7 +1454,7 @@ class _ResidentRegistrationPageWidgetState
 
                     if (age < 18) {
                       _showUnderagePopup();
-                      return; // Prevent updating DOB
+                      return;
                     }
 
                     String formattedDate =
@@ -1452,10 +1477,7 @@ class _ResidentRegistrationPageWidgetState
             ),
           ],
         ),
-
         const SizedBox(width: 200),
-
-        // OCCUPATION
         Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -1481,10 +1503,7 @@ class _ResidentRegistrationPageWidgetState
             ),
           ],
         ),
-
         const SizedBox(width: 200),
-
-        // MONTHLY INCOME
         Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -1515,18 +1534,19 @@ class _ResidentRegistrationPageWidgetState
     );
   }
 
-  /// CALCULATE AGE
   int _calculateAge(DateTime birthDate) {
     DateTime today = DateTime.now();
+
     int age = today.year - birthDate.year;
+
     if (today.month < birthDate.month ||
         (today.month == birthDate.month && today.day < birthDate.day)) {
       age--;
     }
+
     return age;
   }
 
-  /// UNDERAGE POPUP
   void _showUnderagePopup() {
     showDialog(
       context: context,
@@ -1541,7 +1561,11 @@ class _ResidentRegistrationPageWidgetState
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.error_outline, size: 60, color: Colors.redAccent),
+                const Icon(
+                  Icons.error_outline,
+                  size: 60,
+                  color: Colors.redAccent,
+                ),
                 const SizedBox(height: 16),
                 Text(
                   "Age Restriction",
@@ -1591,7 +1615,6 @@ class _ResidentRegistrationPageWidgetState
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 4P's Beneficiary
         Expanded(
           child: Row(
             children: [
@@ -1610,9 +1633,7 @@ class _ResidentRegistrationPageWidgetState
             ],
           ),
         ),
-
-        const SizedBox(width: 40), // spacing between the two
-        // IP-Type of Ethnicity
+        const SizedBox(width: 40),
         Expanded(
           child: Row(
             children: [
@@ -1629,7 +1650,6 @@ class _ResidentRegistrationPageWidgetState
                 style: GoogleFonts.poppins(fontSize: 22),
               ),
               const SizedBox(width: 8),
-              // TextField for specifying ethnicity
               SizedBox(
                 width: 180,
                 child: TextField(
@@ -1647,9 +1667,7 @@ class _ResidentRegistrationPageWidgetState
       ],
     );
   }
-  // Initialize 5 default rows in initState()
 
-  // ---------------- AGE CALCULATOR FUNCTION ----------------
   String calculateAge(DateTime birthDate) {
     DateTime today = DateTime.now();
 
@@ -1661,6 +1679,7 @@ class _ResidentRegistrationPageWidgetState
       months--;
       days += DateTime(birthDate.year, birthDate.month + 1, 0).day;
     }
+
     if (months < 0) {
       years--;
       months += 12;
@@ -1673,12 +1692,10 @@ class _ResidentRegistrationPageWidgetState
     }
   }
 
-  // ------------- FAMILY MEMBERS TABLE WIDGET -------------
   Widget _buildFamilyMembersTable() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Header
         Padding(
           padding: const EdgeInsets.only(bottom: 12.0),
           child: Column(
@@ -1696,11 +1713,9 @@ class _ResidentRegistrationPageWidgetState
             ],
           ),
         ),
-
-        // Table
         Center(
           child: Container(
-            width: 1700, // wide enough for delete column
+            width: 1700,
             decoration: BoxDecoration(
               border: Border.all(color: Colors.black87, width: 1.2),
               borderRadius: BorderRadius.circular(6),
@@ -1708,20 +1723,19 @@ class _ResidentRegistrationPageWidgetState
             child: Table(
               border: TableBorder.all(color: Colors.black54, width: 1),
               columnWidths: const {
-                0: FlexColumnWidth(2.2), // Family Members
-                1: FlexColumnWidth(2.2), // Relation
-                2: FlexColumnWidth(2.8), // Date of Birth
-                3: FlexColumnWidth(1), // Age
-                4: FlexColumnWidth(1.4), // Gender
-                5: FlexColumnWidth(1.5), // Civil Status
-                6: FlexColumnWidth(1.5), // Education
-                7: FlexColumnWidth(2.5), // Skills
-                8: FlexColumnWidth(2.5), // Remarks
-                9: FlexColumnWidth(1.2), // Code
-                10: FlexColumnWidth(1.3), // Delete
+                0: FlexColumnWidth(2.2),
+                1: FlexColumnWidth(2.2),
+                2: FlexColumnWidth(2.8),
+                3: FlexColumnWidth(1),
+                4: FlexColumnWidth(1.4),
+                5: FlexColumnWidth(1.5),
+                6: FlexColumnWidth(1.5),
+                7: FlexColumnWidth(2.5),
+                8: FlexColumnWidth(2.5),
+                9: FlexColumnWidth(1.2),
+                10: FlexColumnWidth(1.3),
               },
               children: [
-                // Header Row
                 TableRow(
                   decoration: BoxDecoration(color: Colors.grey[200]),
                   children: [
@@ -1738,8 +1752,6 @@ class _ResidentRegistrationPageWidgetState
                     _buildTableHeader('Delete'),
                   ],
                 ),
-
-                // Data Rows
                 for (int index = 0; index < _familyRows.length; index++)
                   TableRow(
                     children: [
@@ -1759,7 +1771,6 @@ class _ResidentRegistrationPageWidgetState
                       _buildTableTextField(_familyRows[index]['skills']!),
                       _buildTableTextField(_familyRows[index]['remarks']!),
                       _buildTableTextField(_familyRows[index]['code']!),
-                      // Delete Button
                       Padding(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 6,
@@ -1770,7 +1781,11 @@ class _ResidentRegistrationPageWidgetState
                           tooltip: 'Delete this row',
                           onPressed: () {
                             setState(() {
-                              _familyRows.removeAt(index);
+                              final removed = _familyRows.removeAt(index);
+
+                              for (final controller in removed.values) {
+                                controller.dispose();
+                              }
                             });
                           },
                         ),
@@ -1781,10 +1796,7 @@ class _ResidentRegistrationPageWidgetState
             ),
           ),
         ),
-
         const SizedBox(height: 16),
-
-        // Add Row Button
         ElevatedButton.icon(
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF0D743D),
@@ -1820,7 +1832,6 @@ class _ResidentRegistrationPageWidgetState
     );
   }
 
-  // -------------------- TABLE HELPERS --------------------
   Widget _buildTableHeader(String label) {
     return Padding(
       padding: const EdgeInsets.all(8.0),
@@ -1854,7 +1865,6 @@ class _ResidentRegistrationPageWidgetState
     );
   }
 
-  // -------------------- DATE PICKER FIELD --------------------
   Widget _buildDatePickerField(
     TextEditingController birthController,
     TextEditingController ageController,
@@ -1878,6 +1888,7 @@ class _ResidentRegistrationPageWidgetState
           GestureDetector(
             onTap: () async {
               DateTime now = DateTime.now();
+
               DateTime? pickedDate = await showDatePicker(
                 context: context,
                 initialDate: now,
@@ -1888,7 +1899,9 @@ class _ResidentRegistrationPageWidgetState
               if (pickedDate != null) {
                 birthController.text =
                     "${pickedDate.year}-${pickedDate.month.toString().padLeft(2, '0')}-${pickedDate.day.toString().padLeft(2, '0')}";
+
                 ageController.text = calculateAge(pickedDate);
+
                 setState(() {});
               }
             },
@@ -1910,7 +1923,6 @@ class _ResidentRegistrationPageWidgetState
     );
   }
 
-  // ------------- UPDATED INFORMATION BOX (A, B, C on first row; D, E on second) -------------
   Widget _buildInformationBox() {
     return Align(
       alignment: Alignment.topLeft,
@@ -1923,11 +1935,11 @@ class _ResidentRegistrationPageWidgetState
             color: Colors.grey[100],
             border: Border.all(color: Colors.black87, width: 1.2),
             borderRadius: BorderRadius.circular(10),
-            boxShadow: [
+            boxShadow: const [
               BoxShadow(
                 color: Colors.black12,
                 blurRadius: 4,
-                offset: const Offset(2, 2),
+                offset: Offset(2, 2),
               ),
             ],
           ),
@@ -1945,10 +1957,8 @@ class _ResidentRegistrationPageWidgetState
                 ),
               ),
               const SizedBox(height: 8),
-              Divider(color: Colors.black54, thickness: 1),
+              const Divider(color: Colors.black54, thickness: 1),
               const SizedBox(height: 12),
-
-              // ✅ First row (A, B, C)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -1958,13 +1968,11 @@ class _ResidentRegistrationPageWidgetState
                 ],
               ),
               const SizedBox(height: 10),
-
-              // ✅ Second row (D, E)
               Row(
                 mainAxisAlignment: MainAxisAlignment.start,
                 children: [
                   _buildInfoRow('D', 'Pregnant Mother'),
-                  const SizedBox(width: 40), // spacing between D and E
+                  const SizedBox(width: 40),
                   _buildInfoRow('E', 'Solo Parent'),
                 ],
               ),
@@ -1975,7 +1983,6 @@ class _ResidentRegistrationPageWidgetState
     );
   }
 
-  // Helper for each code-description pair
   Widget _buildInfoRow(String code, String description) {
     return SizedBox(
       width: 150,
@@ -2000,9 +2007,7 @@ class _ResidentRegistrationPageWidgetState
     );
   }
 
-  // ------------- DATE REGISTERED (Centered Line with Date) -------------
   Widget _buildDateRegisteredSection() {
-    // Get formatted current date and time with AM/PM
     String formattedDate = DateFormat(
       'MMMM dd, yyyy • hh:mm a',
     ).format(DateTime.now());
@@ -2010,7 +2015,6 @@ class _ResidentRegistrationPageWidgetState
     return Center(
       child: Column(
         children: [
-          // Label
           Text(
             'Date Registered:',
             style: GoogleFonts.poppins(
@@ -2019,8 +2023,6 @@ class _ResidentRegistrationPageWidgetState
             ),
           ),
           const SizedBox(height: 8),
-
-          // TextField with underline style
           SizedBox(
             width: 320,
             child: TextField(
@@ -2047,16 +2049,12 @@ class _ResidentRegistrationPageWidgetState
     );
   }
 
-  // ------------- HEAD OF FAMILY IMAGE (Larger Left-aligned Box Design) -------------
   Widget _buildHeadOfFamilyImageSection() {
-    // ✅ Move this outside the StatefulBuilder to preserve the image
-
     return Padding(
       padding: const EdgeInsets.only(left: 24.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Label
           Text(
             'Head of the Family (Photo)',
             style: GoogleFonts.poppins(
@@ -2065,31 +2063,28 @@ class _ResidentRegistrationPageWidgetState
             ),
           ),
           const SizedBox(height: 16),
-
-          // Image Box with tap/long-press actions
           StatefulBuilder(
-            builder: (context, setState) {
-              // ✅ Function to pick image
-              Future<void> _pickImage() async {
+            builder: (context, localSetState) {
+              Future<void> pickImage() async {
                 final picker = ImagePicker();
+
                 final picked = await picker.pickImage(
                   source: ImageSource.gallery,
                 );
 
                 if (picked != null) {
-                  // ✅ Store file for upload and bytes for display (web-compatible)
+                  final bytes = await picked.readAsBytes();
+
                   setState(() {
                     imageFile = File(picked.path);
-                    // Load bytes for display (handles web blob URLs better)
-                    picked.readAsBytes().then((bytes) {
-                      setState(() => imageBytes = bytes);
-                    });
+                    imageBytes = bytes;
                   });
+
+                  localSetState(() {});
                 }
               }
 
-              // ✅ Function to confirm image removal
-              Future<void> _confirmRemoveImage() async {
+              Future<void> confirmRemoveImage() async {
                 final shouldRemove = await showDialog<bool>(
                   context: context,
                   builder: (context) => AlertDialog(
@@ -2120,21 +2115,22 @@ class _ResidentRegistrationPageWidgetState
                 if (shouldRemove == true) {
                   setState(() {
                     imageFile = null;
-                    imageBytes = null; // ✅ Clear bytes too
+                    imageBytes = null;
                   });
+
+                  localSetState(() {});
                 }
               }
 
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Image container (box)
                   GestureDetector(
-                    onTap: _pickImage,
-                    onLongPress: imageFile != null ? _confirmRemoveImage : null,
+                    onTap: pickImage,
+                    onLongPress: imageBytes != null ? confirmRemoveImage : null,
                     child: Container(
-                      width: 240, // 🟢 Bigger width
-                      height: 240, // 🟢 Bigger height
+                      width: 240,
+                      height: 240,
                       decoration: BoxDecoration(
                         color: Colors.grey[200],
                         borderRadius: BorderRadius.circular(20),
@@ -2149,9 +2145,7 @@ class _ResidentRegistrationPageWidgetState
                       ),
                       child: imageBytes != null
                           ? ClipRRect(
-                              borderRadius: BorderRadius.circular(
-                                18,
-                              ), // Match container
+                              borderRadius: BorderRadius.circular(18),
                               child: Image.memory(
                                 imageBytes!,
                                 fit: BoxFit.cover,
@@ -2163,7 +2157,7 @@ class _ResidentRegistrationPageWidgetState
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(
+                                  const Icon(
                                     Icons.add_a_photo,
                                     size: 50,
                                     color: Colors.black54,
@@ -2181,14 +2175,12 @@ class _ResidentRegistrationPageWidgetState
                             ),
                     ),
                   ),
-
-                  // Right-side hint text
                   const SizedBox(width: 24),
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.only(top: 16.0),
                       child: Text(
-                        imageFile == null
+                        imageBytes == null
                             ? 'Tap the box to attach the Head of the Family photo.\n'
                                   'Make sure the image is clear and front-facing.'
                             : 'Long press the image to remove or replace it.',
@@ -2209,29 +2201,24 @@ class _ResidentRegistrationPageWidgetState
     );
   }
 
-  // ------------- SUBMIT BUTTON (Centered) -------------
-
   Widget _buildSubmitButton() {
     return Center(
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF0D743D), // ✅ Custom green color
-          padding: const EdgeInsets.symmetric(
-            horizontal: 100,
-            vertical: 28,
-          ), // ✅ Bigger button
+          backgroundColor: const Color(0xFF0D743D),
+          padding: const EdgeInsets.symmetric(horizontal: 100, vertical: 28),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
           elevation: 6,
         ),
         onPressed: () {
-          _registerSave(); // ✅ new function call
+          _registerSave();
         },
         child: Text(
           'SUBMIT',
           style: GoogleFonts.poppins(
-            fontSize: 26, // ✅ Larger font
+            fontSize: 26,
             fontWeight: FontWeight.w700,
             color: Colors.white,
             letterSpacing: 2.0,
@@ -2253,5 +2240,35 @@ class _ResidentRegistrationPageWidgetState
         Text(title, style: GoogleFonts.poppins(fontSize: 22)),
       ],
     );
+  }
+
+  @override
+  void dispose() {
+    _transformationController.dispose();
+
+    _disasterController.dispose();
+    _dateController.dispose();
+    _cityController.dispose();
+    _munController.dispose();
+    _brgyController.dispose();
+    _evacSiteController.dispose();
+    _civilOtherController.dispose();
+    _headSurnameController.dispose();
+    _headFirstController.dispose();
+    _headMiddleController.dispose();
+    _headAgeController.dispose();
+    _headSexController.dispose();
+    _dobController.dispose();
+    _occupationController.dispose();
+    _monthlyIncomeController.dispose();
+    _ipTypeController.dispose();
+
+    for (final row in _familyRows) {
+      for (final controller in row.values) {
+        controller.dispose();
+      }
+    }
+
+    super.dispose();
   }
 }

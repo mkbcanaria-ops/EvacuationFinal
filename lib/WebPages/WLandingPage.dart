@@ -77,138 +77,103 @@ class _WLandingPageState extends State<WLandingPage> {
     }
   }
 
+  Widget _buildGetStartedButton({
+    required bool isMobile,
+    bool fullWidth = false,
+  }) {
+    final button = ElevatedButton(
+      onPressed: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const LoginPage()),
+        );
+      },
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        padding: EdgeInsets.symmetric(
+          horizontal: isMobile ? 16 : 22,
+          vertical: isMobile ? 11 : 14,
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          'Get Started',
+          style: GoogleFonts.poppins(
+            fontSize: isMobile ? 13 : 14,
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFF0D743D),
+          ),
+        ),
+      ),
+    );
+
+    if (fullWidth) {
+      return SizedBox(width: double.infinity, child: button);
+    }
+
+    return button;
+  }
+
   Widget _buildTopFloatingBar(bool isMobile) {
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(6),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = isMobile || constraints.maxWidth < 520;
+
+        final brandBox = Container(
+          width: compact ? double.infinity : null,
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 10 : 12,
+            vertical: compact ? 8 : 6,
+          ),
           decoration: BoxDecoration(
             color: Colors.white.withOpacity(0.18),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: Colors.white.withOpacity(0.18)),
           ),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: compact ? MainAxisSize.max : MainAxisSize.min,
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: Image.asset(
                   'assets/images/Logo2.jpg',
-                  height: isMobile ? 34 : 40,
-                  width: isMobile ? 34 : 40,
+                  height: compact ? 34 : 40,
+                  width: compact ? 34 : 40,
                   fit: BoxFit.cover,
                 ),
               ),
               const SizedBox(width: 10),
-              Text(
-                isMobile ? 'MSWDO-Santa eCamp' : systemName,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.poppins(
-                  fontSize: isMobile ? 14 : 17,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
+              Expanded(
+                child: Text(
+                  compact ? 'MSWDO-Santa eCamp' : systemName,
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                  style: GoogleFonts.poppins(
+                    fontSize: compact ? 13.5 : 17,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ],
           ),
-        ),
-        const Spacer(),
-        ElevatedButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const LoginPage()),
-            );
-          },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.white,
-            elevation: 0,
-            padding: EdgeInsets.symmetric(
-              horizontal: isMobile ? 16 : 22,
-              vertical: isMobile ? 11 : 14,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-          ),
-          child: Text(
-            'Get Started',
-            style: GoogleFonts.poppins(
-              fontSize: isMobile ? 13 : 14,
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFF0D743D),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+        );
 
-  Widget _buildMiniInfoCard({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required bool isMobile,
-  }) {
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: isMobile ? 16 : 18,
-        vertical: isMobile ? 16 : 18,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFF0D743D).withOpacity(0.08)),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF0D743D).withOpacity(0.06),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: isMobile ? 44 : 48,
-            height: isMobile ? 44 : 48,
-            decoration: BoxDecoration(
-              color: const Color(0xFFEAF5EE),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(
-              icon,
-              color: const Color(0xFF0D743D),
-              size: isMobile ? 22 : 24,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: GoogleFonts.poppins(
-                    fontSize: isMobile ? 14 : 15,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF0D743D),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: GoogleFonts.poppins(
-                    fontSize: isMobile ? 12.5 : 13,
-                    color: Colors.black87,
-                    height: 1.45,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+        if (compact) {
+          return brandBox;
+        }
+
+        return Row(
+          children: [
+            Expanded(child: brandBox),
+            const SizedBox(width: 12),
+            _buildGetStartedButton(isMobile: isMobile),
+          ],
+        );
+      },
     );
   }
 
@@ -221,7 +186,7 @@ class _WLandingPageState extends State<WLandingPage> {
       onTap: () => openFullImage(imagePath),
       child: Container(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(26),
+          borderRadius: BorderRadius.circular(isMobile ? 22 : 26),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.08),
@@ -231,7 +196,7 @@ class _WLandingPageState extends State<WLandingPage> {
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(26),
+          borderRadius: BorderRadius.circular(isMobile ? 22 : 26),
           child: Stack(
             children: [
               Positioned.fill(child: Image.asset(imagePath, fit: BoxFit.cover)),
@@ -244,18 +209,18 @@ class _WLandingPageState extends State<WLandingPage> {
                       colors: [
                         Colors.black.withOpacity(0.08),
                         Colors.black.withOpacity(0.14),
-                        Colors.black.withOpacity(0.76),
+                        Colors.black.withOpacity(0.78),
                       ],
                     ),
                   ),
                 ),
               ),
               Positioned(
-                top: 16,
-                left: 16,
+                top: isMobile ? 12 : 16,
+                left: isMobile ? 12 : 16,
                 child: Container(
-                  width: 42,
-                  height: 42,
+                  width: isMobile ? 38 : 42,
+                  height: isMobile ? 38 : 42,
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.92),
                     shape: BoxShape.circle,
@@ -263,13 +228,13 @@ class _WLandingPageState extends State<WLandingPage> {
                   child: Icon(
                     _featureIcon(title),
                     color: const Color(0xFF0D743D),
-                    size: 20,
+                    size: isMobile ? 18 : 20,
                   ),
                 ),
               ),
               Positioned(
-                top: 16,
-                right: 16,
+                top: isMobile ? 12 : 16,
+                right: isMobile ? 12 : 16,
                 child: Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
@@ -282,7 +247,7 @@ class _WLandingPageState extends State<WLandingPage> {
                   child: Text(
                     'Tap to view',
                     style: GoogleFonts.poppins(
-                      fontSize: 11,
+                      fontSize: 10.5,
                       fontWeight: FontWeight.w600,
                       color: const Color(0xFF0D743D),
                     ),
@@ -290,16 +255,18 @@ class _WLandingPageState extends State<WLandingPage> {
                 ),
               ),
               Positioned(
-                left: 18,
-                right: 18,
-                bottom: 18,
+                left: isMobile ? 14 : 18,
+                right: isMobile ? 14 : 18,
+                bottom: isMobile ? 14 : 18,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.poppins(
-                        fontSize: isMobile ? 19 : 21,
+                        fontSize: isMobile ? 18 : 21,
                         fontWeight: FontWeight.w700,
                         color: Colors.white,
                         height: 1.15,
@@ -308,10 +275,12 @@ class _WLandingPageState extends State<WLandingPage> {
                     const SizedBox(height: 8),
                     Text(
                       _featureDescription(title),
+                      maxLines: isMobile ? 4 : 3,
+                      overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.poppins(
-                        fontSize: isMobile ? 12.5 : 13.5,
+                        fontSize: isMobile ? 12.2 : 13.5,
                         color: Colors.white.withOpacity(0.94),
-                        height: 1.5,
+                        height: 1.45,
                       ),
                     ),
                   ],
@@ -326,13 +295,16 @@ class _WLandingPageState extends State<WLandingPage> {
 
   Widget _buildHeroSection({
     required bool isMobile,
+    required bool isSmallPhone,
     required double heroHeight,
   }) {
+    final borderRadius = isMobile ? 26.0 : 36.0;
+
     return Container(
       height: heroHeight,
       width: double.infinity,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(36),
+        borderRadius: BorderRadius.circular(borderRadius),
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF0D743D).withOpacity(0.14),
@@ -342,7 +314,7 @@ class _WLandingPageState extends State<WLandingPage> {
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(36),
+        borderRadius: BorderRadius.circular(borderRadius),
         child: Stack(
           children: [
             Positioned.fill(
@@ -358,161 +330,198 @@ class _WLandingPageState extends State<WLandingPage> {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Color.fromARGB(80, 0, 0, 0),
                       Color.fromARGB(105, 0, 0, 0),
-                      Color.fromARGB(235, 6, 34, 20),
+                      Color.fromARGB(135, 0, 0, 0),
+                      Color.fromARGB(242, 6, 34, 20),
                     ],
                   ),
                 ),
               ),
             ),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
+            Positioned.fill(
               child: SafeArea(
                 bottom: false,
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(
-                    isMobile ? 18 : 26,
-                    18,
-                    isMobile ? 18 : 26,
-                    0,
+                    isMobile ? 14 : 26,
+                    14,
+                    isMobile ? 14 : 26,
+                    isMobile ? 20 : 30,
                   ),
-                  child: _buildTopFloatingBar(isMobile),
-                ),
-              ),
-            ),
-            Positioned(
-              left: isMobile ? 22 : 34,
-              right: isMobile ? 22 : 34,
-              bottom: isMobile ? 28 : 34,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 760),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.14),
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.18),
-                        ),
-                      ),
-                      child: Text(
-                        'Municipality of Santa • Emergency Information System',
-                        style: GoogleFonts.poppins(
-                          fontSize: isMobile ? 11.5 : 12.5,
-                          color: Colors.white,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    Text(
-                      isMobile
-                          ? 'MSWDO-Santa eCamp\nManagement System'
-                          : systemName,
-                      style: GoogleFonts.poppins(
-                        fontSize: isMobile ? 30 : 46,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                        height: 1.05,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Prepared • Informed • Protected',
-                      style: GoogleFonts.poppins(
-                        fontSize: isMobile ? 15 : 18,
-                        fontStyle: FontStyle.italic,
-                        color: Colors.white.withOpacity(0.96),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 620),
-                      child: Text(
-                        'Your safety matters. Stay updated with real-time alerts, evacuation routes, and essential resources designed to keep every resident informed and ready during emergencies.',
-                        style: GoogleFonts.poppins(
-                          fontSize: isMobile ? 14 : 16,
-                          color: Colors.white.withOpacity(0.94),
-                          height: 1.7,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const LoginPage(),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildTopFloatingBar(isMobile),
+                      SizedBox(height: isSmallPhone ? 22 : 28),
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.bottomLeft,
+                          child: SingleChildScrollView(
+                            physics: const NeverScrollableScrollPhysics(),
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 760),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: isSmallPhone ? 10 : 14,
+                                      vertical: isSmallPhone ? 7 : 8,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.14),
+                                      borderRadius: BorderRadius.circular(999),
+                                      border: Border.all(
+                                        color: Colors.white.withOpacity(0.18),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      isSmallPhone
+                                          ? 'Santa • Emergency System'
+                                          : 'Municipality of Santa • Emergency Information System',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: GoogleFonts.poppins(
+                                        fontSize: isSmallPhone
+                                            ? 10.5
+                                            : isMobile
+                                            ? 11.5
+                                            : 12.5,
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(height: isSmallPhone ? 14 : 18),
+                                  Text(
+                                    isMobile
+                                        ? 'MSWDO-Santa eCamp\nManagement System'
+                                        : systemName,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: isSmallPhone
+                                          ? 27
+                                          : isMobile
+                                          ? 30
+                                          : 46,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                      height: 1.05,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    'Prepared • Informed • Protected',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: isSmallPhone
+                                          ? 13.5
+                                          : isMobile
+                                          ? 15
+                                          : 18,
+                                      fontStyle: FontStyle.italic,
+                                      color: Colors.white.withOpacity(0.96),
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  SizedBox(height: isSmallPhone ? 12 : 16),
+                                  Text(
+                                    'Your safety matters. Stay updated with real-time alerts, evacuation routes, and essential resources designed to keep every resident informed and ready during emergencies.',
+                                    maxLines: isSmallPhone ? 5 : null,
+                                    overflow: isSmallPhone
+                                        ? TextOverflow.ellipsis
+                                        : TextOverflow.visible,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: isSmallPhone
+                                          ? 12.5
+                                          : isMobile
+                                          ? 14
+                                          : 16,
+                                      color: Colors.white.withOpacity(0.94),
+                                      height: isSmallPhone ? 1.55 : 1.7,
+                                    ),
+                                  ),
+                                  SizedBox(height: isSmallPhone ? 18 : 24),
+                                  Wrap(
+                                    spacing: 12,
+                                    runSpacing: 12,
+                                    children: [
+                                      ElevatedButton.icon(
+                                        onPressed: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) =>
+                                                  const LoginPage(),
+                                            ),
+                                          );
+                                        },
+                                        icon: const Icon(
+                                          Icons.arrow_forward_rounded,
+                                          color: Colors.white,
+                                        ),
+                                        label: Text(
+                                          'Enter Portal',
+                                          style: GoogleFonts.poppins(
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: const Color(
+                                            0xFF0D743D,
+                                          ),
+                                          elevation: 0,
+                                          padding: EdgeInsets.symmetric(
+                                            horizontal: isSmallPhone ? 20 : 22,
+                                            vertical: isSmallPhone ? 14 : 16,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              18,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      OutlinedButton.icon(
+                                        onPressed: _openWeatherTracker,
+                                        icon: const Icon(
+                                          Icons.cloud_outlined,
+                                          color: Colors.white,
+                                        ),
+                                        label: Text(
+                                          'Track Weather',
+                                          style: GoogleFonts.poppins(
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                        style: OutlinedButton.styleFrom(
+                                          side: BorderSide(
+                                            color: Colors.white.withOpacity(
+                                              0.35,
+                                            ),
+                                          ),
+                                          padding: EdgeInsets.symmetric(
+                                            horizontal: isSmallPhone ? 20 : 20,
+                                            vertical: isSmallPhone ? 14 : 16,
+                                          ),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              18,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ),
-                            );
-                          },
-                          icon: const Icon(
-                            Icons.arrow_forward_rounded,
-                            color: Colors.white,
-                          ),
-                          label: Text(
-                            'Enter Portal',
-                            style: GoogleFonts.poppins(
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                            ),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF0D743D),
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 22,
-                              vertical: 16,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(18),
                             ),
                           ),
                         ),
-                        OutlinedButton.icon(
-                          onPressed: _openWeatherTracker,
-                          icon: const Icon(
-                            Icons.cloud_outlined,
-                            color: Colors.white,
-                          ),
-                          label: Text(
-                            'Track Weather',
-                            style: GoogleFonts.poppins(
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                            ),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            side: BorderSide(
-                              color: Colors.white.withOpacity(0.35),
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 16,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -526,6 +535,7 @@ class _WLandingPageState extends State<WLandingPage> {
     required String title,
     required String subtitle,
     required bool isMobile,
+    required bool isSmallPhone,
   }) {
     return Column(
       children: [
@@ -533,7 +543,11 @@ class _WLandingPageState extends State<WLandingPage> {
           title,
           textAlign: TextAlign.center,
           style: GoogleFonts.poppins(
-            fontSize: isMobile ? 24 : 30,
+            fontSize: isSmallPhone
+                ? 21
+                : isMobile
+                ? 24
+                : 30,
             fontWeight: FontWeight.w700,
             color: const Color(0xFF0D743D),
           ),
@@ -543,7 +557,11 @@ class _WLandingPageState extends State<WLandingPage> {
           subtitle,
           textAlign: TextAlign.center,
           style: GoogleFonts.poppins(
-            fontSize: isMobile ? 13.5 : 15,
+            fontSize: isSmallPhone
+                ? 12.5
+                : isMobile
+                ? 13.5
+                : 15,
             color: Colors.black87,
             height: 1.6,
           ),
@@ -633,11 +651,14 @@ class _WLandingPageState extends State<WLandingPage> {
                 Icons.open_in_new_rounded,
                 color: Color(0xFF0D743D),
               ),
-              label: Text(
-                'Open Weather Tracker',
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF0D743D),
+              label: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  'Open Weather Tracker',
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF0D743D),
+                  ),
                 ),
               ),
               style: ElevatedButton.styleFrom(
@@ -879,20 +900,44 @@ class _WLandingPageState extends State<WLandingPage> {
     );
   }
 
+  double _getHeroHeight({
+    required bool isMobile,
+    required bool isTablet,
+    required bool isSmallPhone,
+  }) {
+    if (isSmallPhone) return 760;
+    if (isMobile) return 710;
+    if (isTablet) return 620;
+    return 680;
+  }
+
+  double _getFeatureAspectRatio({
+    required bool isMobile,
+    required bool isTablet,
+    required bool isSmallPhone,
+  }) {
+    if (isSmallPhone) return 0.86;
+    if (isMobile) return 0.94;
+    if (isTablet) return 1.05;
+    return 1.08;
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
+
+        final isSmallPhone = width < 430;
         final isMobile = width < 600;
         final isTablet = width >= 600 && width < 1000;
         final isDesktop = width >= 1000;
 
-        final heroHeight = isMobile
-            ? 560.0
-            : isTablet
-            ? 620.0
-            : 680.0;
+        final heroHeight = _getHeroHeight(
+          isMobile: isMobile,
+          isTablet: isTablet,
+          isSmallPhone: isSmallPhone,
+        );
 
         final featureCount = isDesktop
             ? 3
@@ -900,7 +945,9 @@ class _WLandingPageState extends State<WLandingPage> {
             ? 2
             : 1;
 
-        final sidePadding = isMobile
+        final sidePadding = isSmallPhone
+            ? 12.0
+            : isMobile
             ? 16.0
             : isTablet
             ? 26.0
@@ -908,71 +955,97 @@ class _WLandingPageState extends State<WLandingPage> {
 
         return Scaffold(
           backgroundColor: const Color(0xFFF5FAF7),
-          body: SingleChildScrollView(
-            child: Column(
-              children: [
-                Padding(
-                  padding: EdgeInsets.fromLTRB(sidePadding, 12, sidePadding, 0),
-                  child: _buildHeroSection(
-                    isMobile: isMobile,
-                    heroHeight: heroHeight,
+          body: SafeArea(
+            bottom: false,
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      sidePadding,
+                      isMobile ? 8 : 12,
+                      sidePadding,
+                      0,
+                    ),
+                    child: _buildHeroSection(
+                      isMobile: isMobile,
+                      isSmallPhone: isSmallPhone,
+                      heroHeight: heroHeight,
+                    ),
                   ),
-                ),
-                Padding(
-                  padding: EdgeInsets.fromLTRB(sidePadding, 24, sidePadding, 0),
-                  child: _buildSectionHeader(
-                    title: 'Essential Emergency Resources',
-                    subtitle:
-                        'Quickly access important sections designed to support residents during emergencies and evacuation response.',
-                    isMobile: isMobile,
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      sidePadding,
+                      24,
+                      sidePadding,
+                      0,
+                    ),
+                    child: _buildSectionHeader(
+                      title: 'Essential Emergency Resources',
+                      subtitle:
+                          'Quickly access important sections designed to support residents during emergencies and evacuation response.',
+                      isMobile: isMobile,
+                      isSmallPhone: isSmallPhone,
+                    ),
                   ),
-                ),
-                Padding(
-                  padding: EdgeInsets.fromLTRB(sidePadding, 24, sidePadding, 0),
-                  child: GridView.count(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount: featureCount,
-                    crossAxisSpacing: 18,
-                    mainAxisSpacing: 18,
-                    childAspectRatio: isMobile
-                        ? 1.02
-                        : isTablet
-                        ? 1.05
-                        : 1.08,
-                    children: [
-                      _buildFeatureCard(
-                        imagePath: 'assets/images/Mainpic1.jpg',
-                        title: 'Evacuation Routes',
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      sidePadding,
+                      24,
+                      sidePadding,
+                      0,
+                    ),
+                    child: GridView.count(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      crossAxisCount: featureCount,
+                      crossAxisSpacing: 18,
+                      mainAxisSpacing: 18,
+                      childAspectRatio: _getFeatureAspectRatio(
                         isMobile: isMobile,
+                        isTablet: isTablet,
+                        isSmallPhone: isSmallPhone,
                       ),
-                      _buildFeatureCard(
-                        imagePath: 'assets/images/Mainpic2.jpg',
-                        title: 'Emergency Shelters',
-                        isMobile: isMobile,
-                      ),
-                      _buildFeatureCard(
-                        imagePath: 'assets/images/Mainpic3.jpg',
-                        title: 'Alerts & Safety Tips',
-                        isMobile: isMobile,
-                      ),
-                    ],
+                      children: [
+                        _buildFeatureCard(
+                          imagePath: 'assets/images/Mainpic1.jpg',
+                          title: 'Evacuation Routes',
+                          isMobile: isMobile,
+                        ),
+                        _buildFeatureCard(
+                          imagePath: 'assets/images/Mainpic2.jpg',
+                          title: 'Emergency Shelters',
+                          isMobile: isMobile,
+                        ),
+                        _buildFeatureCard(
+                          imagePath: 'assets/images/Mainpic3.jpg',
+                          title: 'Alerts & Safety Tips',
+                          isMobile: isMobile,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                Padding(
-                  padding: EdgeInsets.fromLTRB(sidePadding, 28, sidePadding, 0),
-                  child: _buildEmergencyHighlight(isMobile),
-                ),
-                Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    sidePadding,
-                    30,
-                    sidePadding,
-                    40,
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      sidePadding,
+                      28,
+                      sidePadding,
+                      0,
+                    ),
+                    child: _buildEmergencyHighlight(isMobile),
                   ),
-                  child: _buildFooter(isMobile),
-                ),
-              ],
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      sidePadding,
+                      30,
+                      sidePadding,
+                      40,
+                    ),
+                    child: _buildFooter(isMobile),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -1004,15 +1077,23 @@ class FullImageView extends StatelessWidget {
         ),
         centerTitle: true,
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: InteractiveViewer(
-              minScale: 0.8,
-              maxScale: 4,
-              child: Image.asset(imagePath),
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: InteractiveViewer(
+                minScale: 0.7,
+                maxScale: 4,
+                boundaryMargin: const EdgeInsets.all(80),
+                child: Image.asset(
+                  imagePath,
+                  fit: BoxFit.contain,
+                  width: double.infinity,
+                  height: double.infinity,
+                ),
+              ),
             ),
           ),
         ),

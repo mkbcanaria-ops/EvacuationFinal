@@ -1,17 +1,21 @@
-// ignore_for_file: use_build_context_synchronously, unnecessary_null_comparison
+// ignore_for_file: use_build_context_synchronously, unnecessary_null_comparison, unused_import
+
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui';
+
 import 'package:evacutaion/ResidentPAges/ResidentDashboard.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
-
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class UpdateRegistrationPage extends StatelessWidget {
   const UpdateRegistrationPage({super.key, required this.uid});
-  final String uid; // ✅ add UID
+
+  final String uid;
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +39,7 @@ class UpdateRegistrationPage extends StatelessWidget {
           ),
         ),
       ),
-      body: UpdateRegistrationPageWidget(uid: uid), // pass UID to form
+      body: UpdateRegistrationPageWidget(uid: uid),
     );
   }
 }
@@ -52,14 +56,20 @@ class UpdateRegistrationPageWidget extends StatefulWidget {
 
 class _UpdateRegistrationPageWidgetState
     extends State<UpdateRegistrationPageWidget> {
+  // -------------------- PINCH ZOOM / FIT SCREEN --------------------
   final TransformationController _controller = TransformationController();
+  final GlobalKey _formCanvasKey = GlobalKey();
 
-  // Zoom settings
-  final double _initialScale = 0.4;
-  final double _minScale = 0.2;
-  final double _maxScale = 3.0;
-  final double _zoomStep = 0.1;
-  double _currentScale = 0.7; // Updated to be even more zoomed in
+  static const double _formWidth = 1560.0;
+  double _formHeight = 2200.0;
+
+  final double _minScale = 0.05;
+  final double _maxScale = 4.0;
+  final double _zoomStep = 0.15;
+
+  double _fitScale = 0.4;
+  bool _zoomInitialized = false;
+  Size? _lastViewportSize;
 
   // Controllers
   final TextEditingController _disasterController = TextEditingController();
@@ -73,25 +83,26 @@ class _UpdateRegistrationPageWidgetState
   final TextEditingController _evacCenterController = TextEditingController();
   final TextEditingController _evacSiteController = TextEditingController();
   final TextEditingController _civilOtherController = TextEditingController();
-  // -------------------- CONTROLLERS --------------------
+
   final TextEditingController _headSurnameController = TextEditingController();
   final TextEditingController _headFirstController = TextEditingController();
   final TextEditingController _headMiddleController = TextEditingController();
   final TextEditingController _headAgeController = TextEditingController();
-  final TextEditingController _headSexController =
-      TextEditingController(); // Holds "M" or "F"
+  final TextEditingController _headSexController = TextEditingController();
   final TextEditingController _dobController = TextEditingController();
   final TextEditingController _occupationController = TextEditingController();
   final TextEditingController _monthlyIncomeController =
       TextEditingController();
-  // -------------------- CONTROLLERS --------------------
+
   final List<Map<String, TextEditingController>> _familyRows = [];
+
   final TextEditingController _dateRegisteredController =
       TextEditingController();
+
   File? imageFile;
-  Uint8List? _headImageBytes; // 👈 to store downloaded image
-  String? _headImageUrl; // 👈 optional, to hold Supabase URL
-  File? _headImageFile; // New image picked from gallery
+  Uint8List? _headImageBytes;
+  String? _headImageUrl;
+  File? _headImageFile;
 
   // Civil Status
   bool _single = false;
@@ -99,7 +110,9 @@ class _UpdateRegistrationPageWidgetState
   bool _widowed = false;
   bool _is4PsBeneficiary = false;
   bool _isIP = false;
-  TextEditingController _ipTypeController = TextEditingController();
+
+  final TextEditingController _ipTypeController = TextEditingController();
+
   String _formatMonth(int month) {
     const months = [
       'Jan',
@@ -121,16 +134,17 @@ class _UpdateRegistrationPageWidgetState
   @override
   void initState() {
     super.initState();
+
     _dateController.text = DateFormat(
       'MMMM dd, yyyy • hh:mm a',
     ).format(DateTime.now());
-    _controller.value = Matrix4.identity()..scale(_initialScale);
+
     for (int i = 0; i < 5; i++) {
       _familyRows.add({
         'name': TextEditingController(),
         'relation': TextEditingController(),
         'age': TextEditingController(),
-        'birthdate': TextEditingController(), // ✅ NEW DOB CONTROLLER
+        'birthdate': TextEditingController(),
         'gender': TextEditingController(),
         'civilStatus': TextEditingController(),
         'education': TextEditingController(),
@@ -139,24 +153,136 @@ class _UpdateRegistrationPageWidgetState
         'code': TextEditingController(),
       });
     }
+
     _fetchRegistrationDetails();
   }
 
-  void _zoomIn() {
-    setState(() {
-      _currentScale = (_currentScale + _zoomStep).clamp(_minScale, _maxScale);
+  // -------------------- FIT SCREEN FUNCTIONS --------------------
+
+  double _safeWidth(BoxConstraints constraints) {
+    if (constraints.maxWidth.isFinite && constraints.maxWidth > 0) {
+      return constraints.maxWidth;
+    }
+    return MediaQuery.of(context).size.width;
+  }
+
+  double _safeHeight(BoxConstraints constraints) {
+    if (constraints.maxHeight.isFinite && constraints.maxHeight > 0) {
+      return constraints.maxHeight;
+    }
+    return MediaQuery.of(context).size.height;
+  }
+
+  double _calculateFitScale(BoxConstraints constraints) {
+    final screenWidth = _safeWidth(constraints);
+    final screenHeight = _safeHeight(constraints);
+
+    const double horizontalPadding = 24;
+    const double verticalPadding = 24;
+
+    final widthScale = (screenWidth - horizontalPadding) / _formWidth;
+    final heightScale = (screenHeight - verticalPadding) / _formHeight;
+
+    final scale = math.min(widthScale, heightScale);
+
+    return scale.clamp(_minScale, _maxScale).toDouble();
+  }
+
+  Matrix4 _buildFitMatrix(BoxConstraints constraints, double scale) {
+    final screenWidth = _safeWidth(constraints);
+    final screenHeight = _safeHeight(constraints);
+
+    final scaledWidth = _formWidth * scale;
+    final scaledHeight = _formHeight * scale;
+
+    final dx = math.max((screenWidth - scaledWidth) / 2, 0).toDouble();
+    final dy = math.max((screenHeight - scaledHeight) / 2, 0).toDouble();
+
+    return Matrix4.identity()
+      ..translate(dx, dy)
+      ..scale(scale);
+  }
+
+  void _syncFitToScreen(BoxConstraints constraints) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      final renderBox =
+          _formCanvasKey.currentContext?.findRenderObject() as RenderBox?;
+
+      final measuredHeight = renderBox?.size.height ?? _formHeight;
+
+      final viewportSize = Size(
+        _safeWidth(constraints),
+        _safeHeight(constraints),
+      );
+
+      final viewportChanged =
+          _lastViewportSize == null ||
+          (_lastViewportSize!.width - viewportSize.width).abs() > 1 ||
+          (_lastViewportSize!.height - viewportSize.height).abs() > 1;
+
+      final heightChanged = (measuredHeight - _formHeight).abs() > 1;
+
+      if (!_zoomInitialized || viewportChanged) {
+        setState(() {
+          _formHeight = measuredHeight;
+          _lastViewportSize = viewportSize;
+          _fitScale = _calculateFitScale(constraints);
+          _controller.value = _buildFitMatrix(constraints, _fitScale);
+          _zoomInitialized = true;
+        });
+      } else if (heightChanged) {
+        setState(() {
+          _formHeight = measuredHeight;
+        });
+      }
     });
+  }
+
+  void _setZoomScale(double newScale) {
+    final matrix = Matrix4.copy(_controller.value);
+    final currentScale = matrix.getMaxScaleOnAxis();
+
+    if (currentScale == 0) return;
+
+    final ratio = newScale / currentScale;
+
+    setState(() {
+      _controller.value = matrix..scale(ratio);
+    });
+  }
+
+  void _zoomIn() {
+    final currentScale = _controller.value.getMaxScaleOnAxis();
+    final newScale = (currentScale + _zoomStep).clamp(_minScale, _maxScale);
+    _setZoomScale(newScale.toDouble());
   }
 
   void _zoomOut() {
-    setState(() {
-      _currentScale = (_currentScale - _zoomStep).clamp(_minScale, _maxScale);
-    });
+    final currentScale = _controller.value.getMaxScaleOnAxis();
+    final newScale = (currentScale - _zoomStep).clamp(_minScale, _maxScale);
+    _setZoomScale(newScale.toDouble());
   }
 
   void _resetZoom() {
+    final size = MediaQuery.of(context).size;
+
+    final constraints = BoxConstraints(
+      maxWidth: size.width,
+      maxHeight: size.height,
+    );
+
+    final renderBox =
+        _formCanvasKey.currentContext?.findRenderObject() as RenderBox?;
+
+    if (renderBox != null) {
+      _formHeight = renderBox.size.height;
+    }
+
     setState(() {
-      _currentScale = 0.6; // Updated reset to match new default
+      _fitScale = _calculateFitScale(constraints);
+      _controller.value = _buildFitMatrix(constraints, _fitScale);
     });
   }
 
@@ -178,7 +304,6 @@ class _UpdateRegistrationPageWidgetState
       debugPrint('🧩 Date of Occurrence: ${_dateController.text}');
       debugPrint('🧩 Selected Evacuation Site: ${_evacSiteController.text}');
 
-      // Step 1: Fetch existing image
       final existingRecord = await supabase
           .from('Registration_Table')
           .select('Head_Image')
@@ -188,7 +313,6 @@ class _UpdateRegistrationPageWidgetState
       String? oldImagePath = existingRecord?['Head_Image'];
       String? newImagePath;
 
-      // Step 2: Upload new image if selected
       if (_headImageBytes != null) {
         final bucket = supabase.storage.from('headimage');
 
@@ -202,6 +326,7 @@ class _UpdateRegistrationPageWidgetState
         }
 
         final fileName = '${uid}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
         await bucket.uploadBinary(
           fileName,
           _headImageBytes!,
@@ -212,7 +337,6 @@ class _UpdateRegistrationPageWidgetState
         debugPrint('✅ New image uploaded: $newImagePath');
       }
 
-      // Step 3: Prepare registration data
       final updateData = {
         'Head_Firstname': _headFirstController.text,
         'Head_Middlename': _headMiddleController.text,
@@ -261,6 +385,7 @@ class _UpdateRegistrationPageWidgetState
       await supabase.from('Family_Members').delete().eq('UID', uid);
 
       final List<Map<String, dynamic>> newFamilyMembers = [];
+
       for (var row in _familyRows) {
         newFamilyMembers.add({
           'UID': uid,
@@ -282,11 +407,10 @@ class _UpdateRegistrationPageWidgetState
         await supabase.from('Family_Members').insert(newFamilyMembers);
       }
 
-      // ✅ Modern success dialog with auto navigation
       if (mounted) {
         showDialog(
           context: context,
-          barrierDismissible: false, // prevent closing manually
+          barrierDismissible: false,
           builder: (context) => Dialog(
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
@@ -321,10 +445,9 @@ class _UpdateRegistrationPageWidgetState
           ),
         );
 
-        // Auto close dialog after 2 seconds and navigate
         Future.delayed(const Duration(seconds: 2), () {
           if (mounted) {
-            Navigator.of(context).pop(); // close dialog
+            Navigator.of(context).pop();
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(builder: (_) => ResidentDashboardPage()),
             );
@@ -333,6 +456,7 @@ class _UpdateRegistrationPageWidgetState
       }
     } catch (e) {
       debugPrint('❌ Error updating registration: $e');
+
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -355,14 +479,12 @@ class _UpdateRegistrationPageWidgetState
 
       final uid = user.id;
 
-      // ✅ Fetch main registration details
       final registrationResponse = await supabase
           .from('Registration_Table')
           .select('*')
           .eq('UID', uid)
           .maybeSingle();
 
-      // ✅ Fetch related family members
       final familyResponse = await supabase
           .from('Family_Members')
           .select('*')
@@ -375,8 +497,8 @@ class _UpdateRegistrationPageWidgetState
         return;
       }
 
-      // ✅ Head image
       final headImageValue = registrationResponse['Head_Image'];
+
       if (headImageValue != null && headImageValue.isNotEmpty) {
         try {
           if (headImageValue.startsWith('http')) {
@@ -393,7 +515,6 @@ class _UpdateRegistrationPageWidgetState
         _headImageUrl = null;
       }
 
-      // ✅ Populate main registration text controllers
       _headFirstController.text = registrationResponse['Head_Firstname'] ?? '';
       _headMiddleController.text =
           registrationResponse['Head_Middlename'] ?? '';
@@ -417,8 +538,8 @@ class _UpdateRegistrationPageWidgetState
       _dateRegisteredController.text =
           registrationResponse['Date_Registered']?.toString() ?? 'N/A';
 
-      // ✅ Civil status
       final civilStatus = registrationResponse['Civil_Status'] ?? '';
+
       setState(() {
         _single = civilStatus == 'Single';
         _married = civilStatus == 'Married';
@@ -436,17 +557,24 @@ class _UpdateRegistrationPageWidgetState
             registrationResponse['IP_Type_of_Ethnicity'] ?? '';
       });
 
-      // ✅ Populate family members
+      for (final row in _familyRows) {
+        for (final controller in row.values) {
+          controller.dispose();
+        }
+      }
+
       _familyRows.clear();
+
       if (familyResponse != null && familyResponse.isNotEmpty) {
         for (var member in familyResponse) {
           String dobString = member['Date_of_Birth'] ?? '';
+
           TextEditingController birthController = TextEditingController(
             text: dobString,
           );
 
-          // Calculate age if DOB is present
           TextEditingController ageController = TextEditingController();
+
           if (dobString.isNotEmpty) {
             try {
               DateTime dob = DateTime.parse(dobString);
@@ -475,100 +603,147 @@ class _UpdateRegistrationPageWidgetState
         }
       }
 
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {
+          _zoomInitialized = false;
+        });
+      }
     } catch (e) {
       debugPrint('❌ Error fetching registration details: $e');
+
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Error fetching data: $e')));
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        SingleChildScrollView(
-          scrollDirection: Axis.vertical,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Transform.scale(
-              scale: _currentScale,
-              child: Container(
-                width: 1560,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 18,
-                ),
-                color: Colors.white,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildTitleSection(),
-                    const SizedBox(height: 24),
-                    _buildDisasterDateSection(),
-                    const SizedBox(height: 60),
-                    _buildLocationCivilRow(),
-                    const SizedBox(height: 60),
-                    _buildHeadOfFamilyRow(),
-                    const SizedBox(height: 60),
-                    _buildAdditionalInfoRow(),
-                    const SizedBox(height: 50),
-                    _buildBeneficiaryEthnicityRow(),
-                    const SizedBox(height: 60),
-                    _buildFamilyMembersTable(),
-                    const SizedBox(height: 10),
-                    _buildInformationBox(),
-                    const SizedBox(height: 40),
-                    _buildHeadOfFamilyImageSection(),
-                    const SizedBox(height: 40),
-                    _buildDateRegisteredSection(),
-                    const SizedBox(height: 40),
-                    _buildSubmitButton(),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          bottom: 20,
-          right: 20,
-          child: Column(
-            children: [
-              _buildZoomButton(Icons.add, Colors.green, _zoomIn, 'Zoom In'),
-              const SizedBox(height: 6),
-              _buildZoomButton(
-                Icons.remove,
-                Colors.orange,
-                _zoomOut,
-                'Zoom Out',
-              ),
-              const SizedBox(height: 6),
-              _buildZoomButton(
-                Icons.refresh,
-                Colors.redAccent,
-                _resetZoom,
-                'Reset Zoom',
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ------------- UPDATED WIDGET: TYPE OF DISASTER & DATE OF OCCURRENCE (ALIGNED FAR LEFT) -------------
-  Widget _buildDisasterDateSection() {
-    return Padding(
-      padding: const EdgeInsets.only(
-        left: 10.0,
-        top: 20.0,
-      ), // ✅ moved closer to the left
+  Widget _buildFormCanvas() {
+    return Container(
+      key: _formCanvasKey,
+      width: _formWidth,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+      color: Colors.white,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Type of Disaster (inline)
+          _buildTitleSection(),
+          const SizedBox(height: 24),
+          _buildDisasterDateSection(),
+          const SizedBox(height: 60),
+          _buildLocationCivilRow(),
+          const SizedBox(height: 60),
+          _buildHeadOfFamilyRow(),
+          const SizedBox(height: 60),
+          _buildAdditionalInfoRow(),
+          const SizedBox(height: 50),
+          _buildBeneficiaryEthnicityRow(),
+          const SizedBox(height: 60),
+          _buildFamilyMembersTable(),
+          const SizedBox(height: 10),
+          _buildInformationBox(),
+          const SizedBox(height: 40),
+          _buildHeadOfFamilyImageSection(),
+          const SizedBox(height: 40),
+          _buildDateRegisteredSection(),
+          const SizedBox(height: 40),
+          _buildSubmitButton(),
+          const SizedBox(height: 80),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _syncFitToScreen(constraints);
+
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: ClipRect(
+                child: InteractiveViewer(
+                  transformationController: _controller,
+                  minScale: _minScale,
+                  maxScale: _maxScale,
+                  panEnabled: true,
+                  scaleEnabled: true,
+                  constrained: false,
+                  alignment: Alignment.topLeft,
+                  boundaryMargin: const EdgeInsets.all(5000),
+                  clipBehavior: Clip.none,
+                  child: _buildFormCanvas(),
+                ),
+              ),
+            ),
+
+            Positioned(
+              top: 14,
+              left: 14,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.92),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.black12),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black12,
+                      blurRadius: 8,
+                      offset: Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  'Pinch to zoom • Drag to move • Tap fit to reset',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: Colors.black87,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+
+            Positioned(
+              bottom: 20,
+              right: 20,
+              child: Column(
+                children: [
+                  _buildZoomButton(Icons.add, Colors.green, _zoomIn, 'Zoom In'),
+                  const SizedBox(height: 6),
+                  _buildZoomButton(
+                    Icons.remove,
+                    Colors.orange,
+                    _zoomOut,
+                    'Zoom Out',
+                  ),
+                  const SizedBox(height: 6),
+                  _buildZoomButton(
+                    Icons.fit_screen,
+                    const Color(0xFF0D743D),
+                    _resetZoom,
+                    'Fit to Screen',
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildDisasterDateSection() {
+    return Padding(
+      padding: const EdgeInsets.only(left: 10.0, top: 20.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -595,10 +770,7 @@ class _UpdateRegistrationPageWidgetState
               ),
             ],
           ),
-
           const SizedBox(height: 20),
-
-          // Date of Occurrence (inline)
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -785,7 +957,6 @@ class _UpdateRegistrationPageWidgetState
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-
                   Flexible(
                     child: Container(
                       width: 180,
@@ -818,7 +989,6 @@ class _UpdateRegistrationPageWidgetState
                       ),
                     ),
                   ),
-
                   Text(
                     '/',
                     style: GoogleFonts.poppins(
@@ -826,7 +996,6 @@ class _UpdateRegistrationPageWidgetState
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-
                   Flexible(
                     child: Container(
                       width: 180,
@@ -859,7 +1028,6 @@ class _UpdateRegistrationPageWidgetState
                       ),
                     ),
                   ),
-
                   Text(
                     '/',
                     style: GoogleFonts.poppins(
@@ -867,8 +1035,6 @@ class _UpdateRegistrationPageWidgetState
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-
-                  // UPDATED BRGY PART: Dropdown list
                   Container(
                     width: 260,
                     margin: const EdgeInsets.symmetric(horizontal: 8),
@@ -953,9 +1119,7 @@ class _UpdateRegistrationPageWidgetState
                   ),
                 ],
               ),
-
               const SizedBox(height: 20),
-
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1052,9 +1216,7 @@ class _UpdateRegistrationPageWidgetState
             ],
           ),
         ),
-
         const SizedBox(width: 60),
-
         Expanded(
           child: Padding(
             padding: const EdgeInsets.only(left: 180.0),
@@ -1180,18 +1342,15 @@ class _UpdateRegistrationPageWidgetState
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Left: Name fields
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Add more padding to move header further to the right
               Padding(
                 padding: const EdgeInsets.only(left: 130.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Header
                     Text(
                       'HEAD OF THE FAMILY',
                       style: GoogleFonts.poppins(
@@ -1200,19 +1359,13 @@ class _UpdateRegistrationPageWidgetState
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Container(
-                      width: 250, // line width under header
-                      height: 2,
-                      color: Colors.black87,
-                    ),
+                    Container(width: 250, height: 2, color: Colors.black87),
                   ],
                 ),
               ),
               const SizedBox(height: 12),
-              // Row for Surname / First / Middle
               Row(
                 children: [
-                  // Surname
                   SizedBox(
                     width: 160,
                     child: TextField(
@@ -1225,7 +1378,6 @@ class _UpdateRegistrationPageWidgetState
                     ),
                   ),
                   const SizedBox(width: 20),
-                  // First Name
                   SizedBox(
                     width: 160,
                     child: TextField(
@@ -1238,7 +1390,6 @@ class _UpdateRegistrationPageWidgetState
                     ),
                   ),
                   const SizedBox(width: 20),
-                  // Middle Name
                   SizedBox(
                     width: 160,
                     child: TextField(
@@ -1255,25 +1406,19 @@ class _UpdateRegistrationPageWidgetState
             ],
           ),
         ),
-
-        // Add padding to push Age & Sex further to the right
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.only(
-              left: 220.0,
-            ), // adjust this value to move further right
+            padding: const EdgeInsets.only(left: 220.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Age
                 _buildInlineField(
-                  'Age:',
+                  'Age',
                   _headAgeController,
                   fontSize: 22,
                   labelFontSize: 22,
                 ),
                 const SizedBox(height: 12),
-                // Sex label and choices in a row
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
@@ -1285,7 +1430,6 @@ class _UpdateRegistrationPageWidgetState
                       ),
                     ),
                     const SizedBox(width: 12),
-                    // Male
                     _buildCheckBox('M', _headSexController.text == 'M', (val) {
                       setState(() {
                         if (val!) {
@@ -1296,7 +1440,6 @@ class _UpdateRegistrationPageWidgetState
                       });
                     }),
                     const SizedBox(width: 10),
-                    // Female
                     _buildCheckBox('F', _headSexController.text == 'F', (val) {
                       setState(() {
                         if (val!) {
@@ -1321,7 +1464,6 @@ class _UpdateRegistrationPageWidgetState
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Date of Birth
         Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -1329,12 +1471,12 @@ class _UpdateRegistrationPageWidgetState
               width: 220,
               child: TextField(
                 controller: _dobController,
-                textAlign: TextAlign.center, // center text
+                textAlign: TextAlign.center,
                 readOnly: true,
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   hintText: 'Select Date',
-                  border: const UnderlineInputBorder(),
-                  suffixIcon: const Icon(Icons.calendar_today),
+                  border: UnderlineInputBorder(),
+                  suffixIcon: Icon(Icons.calendar_today),
                 ),
                 style: GoogleFonts.poppins(fontSize: 22),
                 onTap: () async {
@@ -1348,6 +1490,7 @@ class _UpdateRegistrationPageWidgetState
                   if (pickedDate != null) {
                     String formattedDate =
                         "${_formatMonth(pickedDate.month)}, ${pickedDate.day}, ${pickedDate.year}";
+
                     setState(() {
                       _dobController.text = formattedDate;
                     });
@@ -1365,10 +1508,7 @@ class _UpdateRegistrationPageWidgetState
             ),
           ],
         ),
-
         const SizedBox(width: 200),
-
-        // Occupation
         Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -1376,7 +1516,7 @@ class _UpdateRegistrationPageWidgetState
               width: 220,
               child: TextField(
                 controller: _occupationController,
-                textAlign: TextAlign.center, // center text
+                textAlign: TextAlign.center,
                 decoration: const InputDecoration(
                   hintText: '',
                   border: UnderlineInputBorder(),
@@ -1394,10 +1534,7 @@ class _UpdateRegistrationPageWidgetState
             ),
           ],
         ),
-
         const SizedBox(width: 200),
-
-        // Monthly Income
         Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -1405,7 +1542,7 @@ class _UpdateRegistrationPageWidgetState
               width: 220,
               child: TextField(
                 controller: _monthlyIncomeController,
-                textAlign: TextAlign.center, // center text
+                textAlign: TextAlign.center,
                 decoration: const InputDecoration(
                   hintText: '',
                   border: UnderlineInputBorder(),
@@ -1432,7 +1569,6 @@ class _UpdateRegistrationPageWidgetState
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 4P's Beneficiary
         Expanded(
           child: Row(
             children: [
@@ -1451,9 +1587,7 @@ class _UpdateRegistrationPageWidgetState
             ],
           ),
         ),
-
-        const SizedBox(width: 40), // spacing between the two
-        // IP-Type of Ethnicity
+        const SizedBox(width: 40),
         Expanded(
           child: Row(
             children: [
@@ -1470,7 +1604,6 @@ class _UpdateRegistrationPageWidgetState
                 style: GoogleFonts.poppins(fontSize: 22),
               ),
               const SizedBox(width: 8),
-              // TextField for specifying ethnicity
               SizedBox(
                 width: 180,
                 child: TextField(
@@ -1489,7 +1622,6 @@ class _UpdateRegistrationPageWidgetState
     );
   }
 
-  // ===================== AGE CALCULATOR =====================
   String calculateAge(DateTime birthDate) {
     DateTime today = DateTime.now();
 
@@ -1501,6 +1633,7 @@ class _UpdateRegistrationPageWidgetState
       months--;
       days += DateTime(birthDate.year, birthDate.month + 1, 0).day;
     }
+
     if (months < 0) {
       years--;
       months += 12;
@@ -1513,7 +1646,6 @@ class _UpdateRegistrationPageWidgetState
     }
   }
 
-  // ===================== FAMILY MEMBERS TABLE =====================
   Widget _buildFamilyMembersTable() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -1535,7 +1667,6 @@ class _UpdateRegistrationPageWidgetState
             ],
           ),
         ),
-
         Center(
           child: Container(
             width: 1560,
@@ -1548,8 +1679,8 @@ class _UpdateRegistrationPageWidgetState
               columnWidths: const {
                 0: FlexColumnWidth(2.2),
                 1: FlexColumnWidth(2.2),
-                2: FlexColumnWidth(1.6), // DOB
-                3: FlexColumnWidth(1), // Age
+                2: FlexColumnWidth(1.6),
+                3: FlexColumnWidth(1),
                 4: FlexColumnWidth(1),
                 5: FlexColumnWidth(1.5),
                 6: FlexColumnWidth(1.5),
@@ -1575,35 +1706,36 @@ class _UpdateRegistrationPageWidgetState
                     _buildTableHeader('Actions'),
                   ],
                 ),
-
                 for (int i = 0; i < _familyRows.length; i++)
                   TableRow(
                     children: [
                       _buildTableTextField(_familyRows[i]['name']!),
                       _buildTableTextField(_familyRows[i]['relation']!),
-
                       _buildDatePickerField(
                         _familyRows[i]['birthdate']!,
                         _familyRows[i]['age']!,
                       ),
-
                       _buildTableTextField(
                         _familyRows[i]['age']!,
                         disabled: true,
                       ),
-
                       _buildTableTextField(_familyRows[i]['gender']!),
                       _buildTableTextField(_familyRows[i]['civilStatus']!),
                       _buildTableTextField(_familyRows[i]['education']!),
                       _buildTableTextField(_familyRows[i]['skills']!),
                       _buildTableTextField(_familyRows[i]['remarks']!),
                       _buildTableTextField(_familyRows[i]['code']!),
-
                       IconButton(
                         icon: const Icon(Icons.delete, color: Colors.red),
                         onPressed: () {
                           setState(() {
-                            _familyRows.removeAt(i);
+                            final removed = _familyRows.removeAt(i);
+
+                            for (final controller in removed.values) {
+                              controller.dispose();
+                            }
+
+                            _zoomInitialized = false;
                           });
                         },
                       ),
@@ -1613,9 +1745,7 @@ class _UpdateRegistrationPageWidgetState
             ),
           ),
         ),
-
         const SizedBox(height: 16),
-
         ElevatedButton.icon(
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF0D743D),
@@ -1644,6 +1774,8 @@ class _UpdateRegistrationPageWidgetState
                 'remarks': TextEditingController(),
                 'code': TextEditingController(),
               });
+
+              _zoomInitialized = false;
             });
           },
         ),
@@ -1651,7 +1783,6 @@ class _UpdateRegistrationPageWidgetState
     );
   }
 
-  // ===================== HELPERS =====================
   Widget _buildTableHeader(String label) {
     return Padding(
       padding: const EdgeInsets.all(8.0),
@@ -1705,7 +1836,9 @@ class _UpdateRegistrationPageWidgetState
           if (pickedDate != null) {
             birthController.text =
                 "${pickedDate.year}-${pickedDate.month.toString().padLeft(2, '0')}-${pickedDate.day.toString().padLeft(2, '0')}";
+
             ageController.text = calculateAge(pickedDate);
+
             setState(() {});
           }
         },
@@ -1725,7 +1858,6 @@ class _UpdateRegistrationPageWidgetState
     );
   }
 
-  // ------------- UPDATED INFORMATION BOX (A, B, C on first row; D, E on second) -------------
   Widget _buildInformationBox() {
     return Align(
       alignment: Alignment.topLeft,
@@ -1738,11 +1870,11 @@ class _UpdateRegistrationPageWidgetState
             color: Colors.grey[100],
             border: Border.all(color: Colors.black87, width: 1.2),
             borderRadius: BorderRadius.circular(10),
-            boxShadow: [
+            boxShadow: const [
               BoxShadow(
                 color: Colors.black12,
                 blurRadius: 4,
-                offset: const Offset(2, 2),
+                offset: Offset(2, 2),
               ),
             ],
           ),
@@ -1760,10 +1892,8 @@ class _UpdateRegistrationPageWidgetState
                 ),
               ),
               const SizedBox(height: 8),
-              Divider(color: Colors.black54, thickness: 1),
+              const Divider(color: Colors.black54, thickness: 1),
               const SizedBox(height: 12),
-
-              // ✅ First row (A, B, C)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -1773,13 +1903,11 @@ class _UpdateRegistrationPageWidgetState
                 ],
               ),
               const SizedBox(height: 10),
-
-              // ✅ Second row (D, E)
               Row(
                 mainAxisAlignment: MainAxisAlignment.start,
                 children: [
                   _buildInfoRow('D', 'Pregnant Mother'),
-                  const SizedBox(width: 40), // spacing between D and E
+                  const SizedBox(width: 40),
                   _buildInfoRow('E', 'Solo Parent'),
                 ],
               ),
@@ -1790,7 +1918,6 @@ class _UpdateRegistrationPageWidgetState
     );
   }
 
-  // Helper for each code-description pair
   Widget _buildInfoRow(String code, String description) {
     return SizedBox(
       width: 150,
@@ -1819,7 +1946,6 @@ class _UpdateRegistrationPageWidgetState
     return Center(
       child: Column(
         children: [
-          // Label
           Text(
             'Date Registered:',
             style: GoogleFonts.poppins(
@@ -1828,13 +1954,10 @@ class _UpdateRegistrationPageWidgetState
             ),
           ),
           const SizedBox(height: 8),
-
-          // TextField displaying the inserted date/time from DB
           SizedBox(
             width: 320,
             child: TextField(
-              controller:
-                  _dateRegisteredController, // ✅ now uses your fetched data
+              controller: _dateRegisteredController,
               readOnly: true,
               textAlign: TextAlign.center,
               style: GoogleFonts.poppins(fontSize: 18, color: Colors.black87),
@@ -1871,19 +1994,20 @@ class _UpdateRegistrationPageWidgetState
             ),
           ),
           const SizedBox(height: 16),
-
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 🖼️ Image box with tap & long press actions
               GestureDetector(
                 onTap: () async {
                   final picker = ImagePicker();
+
                   final picked = await picker.pickImage(
                     source: ImageSource.gallery,
                   );
+
                   if (picked != null) {
                     final bytes = await picked.readAsBytes();
+
                     setState(() {
                       _headImageFile = File(picked.path);
                       _headImageBytes = bytes;
@@ -1983,7 +2107,6 @@ class _UpdateRegistrationPageWidgetState
                   ),
                 ),
               ),
-
               const SizedBox(width: 24),
               Expanded(
                 child: Padding(
@@ -2013,23 +2136,20 @@ class _UpdateRegistrationPageWidgetState
     return Center(
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF0D743D), // ✅ Custom green color
-          padding: const EdgeInsets.symmetric(
-            horizontal: 100,
-            vertical: 28,
-          ), // ✅ Bigger button
+          backgroundColor: const Color(0xFF0D743D),
+          padding: const EdgeInsets.symmetric(horizontal: 100, vertical: 28),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
           elevation: 6,
         ),
         onPressed: () {
-          _updateRegisterSave(); // ✅ new function call
+          _updateRegisterSave();
         },
         child: Text(
           'SUBMIT',
           style: GoogleFonts.poppins(
-            fontSize: 26, // ✅ Larger font
+            fontSize: 26,
             fontWeight: FontWeight.w700,
             color: Colors.white,
             letterSpacing: 2.0,
@@ -2051,5 +2171,40 @@ class _UpdateRegistrationPageWidgetState
         Text(title, style: GoogleFonts.poppins(fontSize: 22)),
       ],
     );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+
+    _disasterController.dispose();
+    _dateController.dispose();
+    _cityController.dispose();
+    _munController.dispose();
+    _brgyController.dispose();
+    _evacBrgyController.dispose();
+    _evacCenterController.dispose();
+    _evacSiteController.dispose();
+    _civilOtherController.dispose();
+
+    _headSurnameController.dispose();
+    _headFirstController.dispose();
+    _headMiddleController.dispose();
+    _headAgeController.dispose();
+    _headSexController.dispose();
+    _dobController.dispose();
+    _occupationController.dispose();
+    _monthlyIncomeController.dispose();
+
+    _dateRegisteredController.dispose();
+    _ipTypeController.dispose();
+
+    for (final row in _familyRows) {
+      for (final controller in row.values) {
+        controller.dispose();
+      }
+    }
+
+    super.dispose();
   }
 }
