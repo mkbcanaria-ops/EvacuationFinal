@@ -1,13 +1,14 @@
-// ignore_for_file: use_build_context_synchronously, unnecessary_null_comparison
+// ignore_for_file: use_build_context_synchronously, unnecessary_null_comparison, unused_import, unused_field
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:evacutaion/App/MainDashbaord.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
-
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ShowRegistrationPage extends StatelessWidget {
@@ -55,11 +56,13 @@ class _ShowRegistrationPageFormWidgetState
     extends State<ShowRegistrationPageFormWidget> {
   final TransformationController _controller = TransformationController();
 
-  // Zoom settings
-  final double _initialScale = 0.4;
-  final double _minScale = 0.2;
-  final double _maxScale = 3.0;
-  final double _zoomStep = 0.1;
+  // Zoom / fitted-view settings
+  static const double _formWidth = 1760.0; // wide enough for the full table
+  double _fitScale = 0.4;
+  final double _minScale = 0.12;
+  final double _maxScale = 4.0;
+  final double _zoomStep = 0.15;
+  bool _zoomInitialized = false;
 
   // Controllers
   final TextEditingController _disasterController = TextEditingController();
@@ -92,6 +95,14 @@ class _ShowRegistrationPageFormWidgetState
   Uint8List? _headImageBytes; // 👈 to store downloaded image
   String? _headImageUrl; // 👈 optional, to hold Supabase URL
   File? _headImageFile; // New image picked from gallery
+  double _baseScale = 1.0; // kept for compatibility with old gesture variables
+  final ScrollController _horizontalController = ScrollController();
+  final ScrollController _verticalController = ScrollController();
+  bool _isMousePanning = false;
+  int? _activePointer;
+  final double _contentWidth =
+      _formWidth; // kept for compatibility with old fields
+  bool _didCenterOnce = false;
 
   // Civil Status
   bool _single = false;
@@ -124,7 +135,6 @@ class _ShowRegistrationPageFormWidgetState
     _dateController.text = DateFormat(
       'MMMM dd, yyyy • hh:mm a',
     ).format(DateTime.now());
-    _controller.value = Matrix4.identity()..scale(_initialScale);
     for (int i = 0; i < 5; i++) {
       _familyRows.add({
         'name': TextEditingController(),
@@ -142,66 +152,93 @@ class _ShowRegistrationPageFormWidgetState
     _fetchRegistrationDetails();
   }
 
-  void _zoomIn() {
-    setState(() {
-      final currentScale = _controller.value.getMaxScaleOnAxis();
-      final newScale = (currentScale + _zoomStep).clamp(_minScale, _maxScale);
-      _controller.value = Matrix4.identity()..scale(newScale);
+  double _calculateFitScale(BoxConstraints constraints) {
+    final screenWidth = constraints.maxWidth.isFinite
+        ? constraints.maxWidth
+        : MediaQuery.of(context).size.width;
+
+    // Fit by width so the form is readable and not too zoomed out.
+    final widthScale = (screenWidth - 20) / _formWidth;
+    return widthScale.clamp(_minScale, _maxScale).toDouble();
+  }
+
+  Matrix4 _buildFitMatrix(BoxConstraints constraints, double scale) {
+    final screenWidth = constraints.maxWidth.isFinite
+        ? constraints.maxWidth
+        : MediaQuery.of(context).size.width;
+
+    final scaledWidth = _formWidth * scale;
+    final dx = math.max((screenWidth - scaledWidth) / 2, 0).toDouble();
+
+    return Matrix4.identity()
+      ..translate(dx, 0.0)
+      ..scale(scale);
+  }
+
+  void _initializeZoom(BoxConstraints constraints) {
+    final scale = _calculateFitScale(constraints);
+    _fitScale = scale;
+
+    if (_zoomInitialized) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      setState(() {
+        _controller.value = _buildFitMatrix(constraints, _fitScale);
+        _zoomInitialized = true;
+      });
     });
+  }
+
+  void _setZoomScale(double newScale) {
+    final currentMatrix = Matrix4.copy(_controller.value);
+    final currentScale = currentMatrix.getMaxScaleOnAxis();
+
+    if (currentScale == 0) return;
+
+    final ratio = newScale / currentScale;
+
+    setState(() {
+      _controller.value = currentMatrix..scale(ratio);
+    });
+  }
+
+  void _zoomIn() {
+    final currentScale = _controller.value.getMaxScaleOnAxis();
+    final newScale = (currentScale + _zoomStep).clamp(_minScale, _maxScale);
+    _setZoomScale(newScale.toDouble());
   }
 
   void _zoomOut() {
-    setState(() {
-      final currentScale = _controller.value.getMaxScaleOnAxis();
-      final newScale = (currentScale - _zoomStep).clamp(_minScale, _maxScale);
-      _controller.value = Matrix4.identity()..scale(newScale);
-    });
+    final currentScale = _controller.value.getMaxScaleOnAxis();
+    final newScale = (currentScale - _zoomStep).clamp(_minScale, _maxScale);
+    _setZoomScale(newScale.toDouble());
   }
 
   void _resetZoom() {
+    final size = MediaQuery.of(context).size;
+
+    final constraints = BoxConstraints(
+      maxWidth: size.width,
+      maxHeight: size.height,
+    );
+
     setState(() {
-      _controller.value = Matrix4.identity()..scale(_initialScale);
+      _fitScale = _calculateFitScale(constraints);
+      _controller.value = _buildFitMatrix(constraints, _fitScale);
     });
-  }
-
-  String calculateAge(DateTime birthDate) {
-    final today = DateTime.now();
-
-    int years = today.year - birthDate.year;
-    int months = today.month - birthDate.month;
-    int days = today.day - birthDate.day;
-
-    // Adjust if day difference is negative
-    if (days < 0) {
-      months--;
-      final prevMonth = DateTime(today.year, today.month, 0).day;
-      days += prevMonth;
-    }
-
-    if (months < 0) {
-      years--;
-      months += 12;
-    }
-
-    if (years >= 1) {
-      return "$years";
-    }
-
-    // Otherwise → return months for babies
-    return "$months month${months == 1 ? '' : 's'}";
   }
 
   Future<void> _updateRegisterSave() async {
     try {
       final supabase = Supabase.instance.client;
 
-      debugPrint('🧩 Updating registration...');
-      debugPrint('🧩 Date of Occurrence: ${_dateController.text}');
-      debugPrint('🧩 Selected Evacuation Site: ${_evacSiteController.text}');
+      print('🧩 Updating registration...');
+      print('🧩 Date of Occurrence: ${_dateController.text}');
+      print('🧩 Selected Evacuation Site: ${_evacSiteController.text}');
 
-      // --------------------------------------------------
-      // STEP 1: FETCH EXISTING IMAGE
-      // --------------------------------------------------
+      // Step 1: Fetch existing image
       final existingRecord = await supabase
           .from('Registration_Table')
           .select('Head_Image')
@@ -211,13 +248,11 @@ class _ShowRegistrationPageFormWidgetState
       String? oldImagePath = existingRecord?['Head_Image'];
       String? newImagePath;
 
-      // --------------------------------------------------
-      // STEP 2: UPLOAD NEW IMAGE (IF ANY)
-      // --------------------------------------------------
+      // Step 2: Upload new image if selected
       if (_headImageBytes != null) {
         final bucket = supabase.storage.from('headimage');
 
-        // Delete old image safely
+        // Delete old image
         if (oldImagePath != null && oldImagePath.isNotEmpty) {
           try {
             await bucket.remove([oldImagePath]);
@@ -227,9 +262,9 @@ class _ShowRegistrationPageFormWidgetState
           }
         }
 
+        // Upload new image using bytes (compatible with Flutter Web)
         final fileName =
             '${widget.uid}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-
         await bucket.uploadBinary(
           fileName,
           _headImageBytes!,
@@ -240,9 +275,7 @@ class _ShowRegistrationPageFormWidgetState
         debugPrint('✅ New image uploaded: $newImagePath');
       }
 
-      // --------------------------------------------------
-      // STEP 3: UPDATE REGISTRATION TABLE
-      // --------------------------------------------------
+      // Step 3: Prepare updated registration data
       final updateData = {
         'Head_Firstname': _headFirstController.text,
         'Head_Middlename': _headMiddleController.text,
@@ -256,7 +289,7 @@ class _ShowRegistrationPageFormWidgetState
         'Date_of_Occurrence': _dateController.text,
         'City': _cityController.text,
         'Municipality': _munController.text,
-        'Barangay': _brgyController.text,
+        'Barangay': _brgyController.text.trim(),
         'Site': _evacSiteController.text,
         'Civil_Status': _single
             ? 'Single'
@@ -271,14 +304,13 @@ class _ShowRegistrationPageFormWidgetState
         if (newImagePath != null) 'Head_Image': newImagePath,
       };
 
+      // Step 4: Update Registration table
       await supabase
           .from('Registration_Table')
           .update(updateData)
           .eq('UID', widget.uid);
 
-      // --------------------------------------------------
-      // STEP 4: GET REGISTRATION ID
-      // --------------------------------------------------
+      // Step 5: Refresh Family Members
       final registrationData = await supabase
           .from('Registration_Table')
           .select('Registration_ID')
@@ -286,21 +318,18 @@ class _ShowRegistrationPageFormWidgetState
           .maybeSingle();
 
       if (registrationData == null) {
-        throw Exception('Registration not found for UID: ${widget.uid}');
+        throw Exception("Registration not found for UID: ${widget.uid}");
       }
 
-      final String registrationId = registrationData['Registration_ID'];
+      final registrationId = registrationData['Registration_ID'];
 
-      // --------------------------------------------------
-      // STEP 5: REFRESH FAMILY MEMBERS
-      // --------------------------------------------------
+      // Delete previous family members
       await supabase.from('Family_Members').delete().eq('UID', widget.uid);
 
+      // Insert updated family members (only non-empty rows)
       final List<Map<String, dynamic>> newFamilyMembers = [];
-
       for (var row in _familyRows) {
-        // Skip fully empty rows
-        final hasData = [
+        bool hasData = [
           row['name']?.text,
           row['relation']?.text,
           row['birthdate']?.text,
@@ -310,22 +339,22 @@ class _ShowRegistrationPageFormWidgetState
           row['skills']?.text,
           row['remarks']?.text,
           row['code']?.text,
-        ].any((v) => v != null && v.trim().isNotEmpty);
+        ].any((field) => field != null && field.trim().isNotEmpty);
 
         if (!hasData) continue;
 
-        // Calculate age using birthdate if possible
-        String ageValue = '';
+        // Calculate age string using birthdate
+        String ageString = '';
         if (row['birthdate']?.text != null &&
             row['birthdate']!.text.isNotEmpty) {
           try {
-            final birthDate = DateTime.parse(row['birthdate']!.text);
-            ageValue = calculateAge(birthDate);
+            DateTime birthDate = DateTime.parse(row['birthdate']!.text);
+            ageString = calculateAge(birthDate);
           } catch (_) {
-            ageValue = row['age']?.text ?? '';
+            ageString = row['age']?.text ?? '';
           }
         } else {
-          ageValue = row['age']?.text ?? '';
+          ageString = row['age']?.text ?? '';
         }
 
         newFamilyMembers.add({
@@ -333,7 +362,7 @@ class _ShowRegistrationPageFormWidgetState
           'Registration_ID': registrationId,
           'Family_Member': row['name']?.text ?? '',
           'Relation': row['relation']?.text ?? '',
-          'Age': ageValue,
+          'Age': ageString,
           'Gender': row['gender']?.text ?? '',
           'Civil_Status': row['civilStatus']?.text ?? '',
           'Education': row['education']?.text ?? '',
@@ -348,22 +377,24 @@ class _ShowRegistrationPageFormWidgetState
         await supabase.from('Family_Members').insert(newFamilyMembers);
       }
 
-      // --------------------------------------------------
-      // STEP 6: EVACUATION LOGIC
-      // --------------------------------------------------
+      // Step 6: Re-run Evacuation Logics
       await _checkSickMembersAndAssign(registrationId);
     } catch (e) {
       debugPrint('❌ Error updating registration: $e');
-      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('❌ Error updating data: $e')));
     }
   }
 
+  // ============================================================================
+  // ASSIGNMENT LOGIC — with BIRTHDATE added & skipping empty rows
+  // ============================================================================
+
   Future<void> _checkSickMembersAndAssign(String registrationId) async {
     if (!mounted) return;
     final supabase = Supabase.instance.client;
+    final String headBarangay = _brgyController.text.trim();
 
     // Only consider rows with meaningful data
     final allMembersWithData = _familyRows.where((row) {
@@ -374,28 +405,18 @@ class _ShowRegistrationPageFormWidgetState
       ].any((f) => f != null && f.trim().isNotEmpty);
     }).toList();
 
-    // helper: compute age string based on birthdate; returns:
-    // - "<n> month(s)" for < 1 year
-    // - "<n>" (years as string) for >= 1 year
     String _ageFromDobOrFallback(
       String dobText,
       TextEditingController? ageCtrl,
     ) {
-      if (dobText != null && dobText.trim().isNotEmpty) {
+      if (dobText.trim().isNotEmpty) {
         try {
-          // we expect YYYY-MM-DD from the date picker; try DateTime.parse first
-          DateTime? bd = DateTime.tryParse(dobText.trim());
+          final DateTime? bd = DateTime.tryParse(dobText.trim());
           if (bd == null) {
-            // fallback: try to parse common formatted dates (e.g. "Jan 1, 2020")
-            // if custom formats exist, DateFormat parsing can be added
-            return ageCtrl?.text.trim() != null &&
-                    ageCtrl!.text.trim().isNotEmpty
-                ? ageCtrl.text.trim()
+            return ageCtrl?.text.trim().isNotEmpty == true
+                ? ageCtrl!.text.trim()
                 : '0';
           }
-          // calculateAge helper exists in this class and returns:
-          // - "$years" (e.g. "2") for >= 1 year
-          // - "$months month(s)" for < 1 year
           return calculateAge(bd);
         } catch (_) {
           return ageCtrl?.text.trim().isNotEmpty == true
@@ -403,11 +424,37 @@ class _ShowRegistrationPageFormWidgetState
               : '0';
         }
       } else {
-        // no dob: use provided age field if present
         return ageCtrl?.text.trim().isNotEmpty == true
             ? ageCtrl!.text.trim()
             : '0';
       }
+    }
+
+    String _formatTimeDeployed(DateTime dateTime) {
+      final List<String> months = [
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December',
+      ];
+
+      final month = months[dateTime.month - 1];
+      final day = dateTime.day;
+      final year = dateTime.year;
+
+      final hour12 = dateTime.hour % 12 == 0 ? 12 : dateTime.hour % 12;
+      final minute = dateTime.minute.toString().padLeft(2, '0');
+      final period = dateTime.hour >= 12 ? 'PM' : 'AM';
+
+      return '$month $day, $year | $hour12:$minute $period';
     }
 
     final membersWithCode = allMembersWithData
@@ -418,10 +465,11 @@ class _ShowRegistrationPageFormWidgetState
         .where((row) => !membersWithCode.contains(row))
         .toList();
 
-    final now = DateTime.now().toUtc().toIso8601String();
+    final nowDateTime = DateTime.now();
+    final now = nowDateTime.toIso8601String();
+    final formattedTimeDeployed = _formatTimeDeployed(nowDateTime);
     final headSite = _evacSiteController.text;
 
-    // Build Head Entry (use DOB when available to compute age)
     Map<String, Object> _buildHeadEntry() {
       final headFullName =
           '${_headSurnameController.text} ${_headFirstController.text} ${_headMiddleController.text}'
@@ -458,10 +506,12 @@ class _ShowRegistrationPageFormWidgetState
             double.tryParse(_monthlyIncomeController.text) ?? 0.0,
         'City': _cityController.text,
         'Municipality': _munController.text,
-        'Barangay': _brgyController.text,
+        'Barangay': headBarangay,
         'Site': headSite,
         'Date_Transferred': now,
+        'Time_Deployed': formattedTimeDeployed,
         'Date_of_Birth': _dobController.text,
+        '4Ps_Families': _is4PsBeneficiary,
       };
     }
 
@@ -600,6 +650,7 @@ class _ShowRegistrationPageFormWidgetState
           member['birthdate']?.text ?? '',
           member['age'],
         );
+
         return <String, Object>{
           'UID': widget.uid,
           'Registration_ID': registrationId,
@@ -613,8 +664,11 @@ class _ShowRegistrationPageFormWidgetState
           'Remarks': member['remarks']?.text ?? '',
           'Code': member['code']?.text ?? '',
           'Date_of_Birth': member['birthdate']?.text ?? '',
+          'Barangay': headBarangay,
           'Site': headSite,
           'Date_Transferred': now,
+          'Time_Deployed': formattedTimeDeployed,
+          '4Ps_Families': _is4PsBeneficiary,
         };
       }).toList();
 
@@ -628,7 +682,6 @@ class _ShowRegistrationPageFormWidgetState
 
       if (!mounted) return;
 
-      // Success Dialog
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -723,7 +776,7 @@ class _ShowRegistrationPageFormWidgetState
     }
 
     // ------------------------------------------------------------
-    // STEP 3: CODE MEMBER LOGIC (FULL + FINAL VERSION)
+    // STEP 3: CODE MEMBER LOGIC
     // ------------------------------------------------------------
     String? selectedHelper = potentialHelpers.isNotEmpty
         ? potentialHelpers.first['name']?.text
@@ -746,7 +799,6 @@ class _ShowRegistrationPageFormWidgetState
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Title
                 Text(
                   'Assign In-Charge',
                   style: GoogleFonts.poppins(
@@ -764,7 +816,7 @@ class _ShowRegistrationPageFormWidgetState
                   ),
                 ),
                 const SizedBox(height: 16),
-                // Members with code
+
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
@@ -795,7 +847,7 @@ class _ShowRegistrationPageFormWidgetState
                   ),
                 ),
                 const SizedBox(height: 16),
-                // Dropdown selection
+
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
@@ -835,7 +887,7 @@ class _ShowRegistrationPageFormWidgetState
                   },
                 ),
                 const SizedBox(height: 24),
-                // Actions
+
                 Row(
                   children: [
                     Expanded(
@@ -863,9 +915,7 @@ class _ShowRegistrationPageFormWidgetState
                           Navigator.pop(dialogContext);
 
                           try {
-                            final nowLocal = DateTime.now()
-                                .toUtc()
-                                .toIso8601String();
+                            final nowLocal = DateTime.now().toIso8601String();
 
                             List<Map<String, Object>> evacBInserts = [];
                             List<Map<String, Object>> evacAInserts = [];
@@ -876,6 +926,7 @@ class _ShowRegistrationPageFormWidgetState
                                 member['birthdate']?.text ?? '',
                                 member['age'],
                               );
+
                               evacBInserts.add({
                                 'UID': widget.uid,
                                 'Registration_ID': registrationId,
@@ -892,8 +943,11 @@ class _ShowRegistrationPageFormWidgetState
                                 'Code': member['code']?.text ?? '',
                                 'Date_of_Birth':
                                     member['birthdate']?.text ?? '',
+                                'Barangay': headBarangay,
                                 'Site': 'Santa RHU',
                                 'Date_Transferred': nowLocal,
+                                'Time_Deployed': formattedTimeDeployed,
+                                '4Ps_Families': _is4PsBeneficiary,
                               });
                             }
 
@@ -901,10 +955,12 @@ class _ShowRegistrationPageFormWidgetState
                             final helperRow = allMembersWithData.firstWhere(
                               (row) => row['name']?.text == selectedHelper,
                             );
+
                             final helperAgeValue = _ageFromDobOrFallback(
                               helperRow['birthdate']?.text ?? '',
                               helperRow['age'],
                             );
+
                             evacBInserts.add({
                               'UID': widget.uid,
                               'Registration_ID': registrationId,
@@ -921,8 +977,11 @@ class _ShowRegistrationPageFormWidgetState
                               'Code': 'Assign',
                               'Date_of_Birth':
                                   helperRow['birthdate']?.text ?? '',
+                              'Barangay': headBarangay,
                               'Site': 'Santa RHU',
                               'Date_Transferred': nowLocal,
+                              'Time_Deployed': formattedTimeDeployed,
+                              '4Ps_Families': _is4PsBeneficiary,
                             });
 
                             // 3️⃣ ALL OTHER MEMBERS → EVAC A
@@ -941,6 +1000,7 @@ class _ShowRegistrationPageFormWidgetState
                                   member['birthdate']?.text ?? '',
                                   member['age'],
                                 );
+
                                 evacAInserts.add({
                                   'UID': widget.uid,
                                   'Registration_ID': registrationId,
@@ -957,8 +1017,11 @@ class _ShowRegistrationPageFormWidgetState
                                   'Code': member['code']?.text ?? '',
                                   'Date_of_Birth':
                                       member['birthdate']?.text ?? '',
+                                  'Barangay': headBarangay,
                                   'Site': headSite,
                                   'Date_Transferred': nowLocal,
+                                  'Time_Deployed': formattedTimeDeployed,
+                                  '4Ps_Families': _is4PsBeneficiary,
                                 });
                               }
                             }
@@ -988,7 +1051,6 @@ class _ShowRegistrationPageFormWidgetState
                               debugPrint('❌ Evacuation_A insert failed: $e');
                             }
 
-                            // SUCCESS POPUP
                             if (mounted) {
                               if (okA && okB) {
                                 await _showInsertSuccessDialog(
@@ -1039,6 +1101,7 @@ class _ShowRegistrationPageFormWidgetState
       },
     );
   }
+  // ...existing code...
 
   Future<void> _showInsertSuccessDialog(
     BuildContext context,
@@ -1085,8 +1148,8 @@ class _ShowRegistrationPageFormWidgetState
               const SizedBox(height: 10),
               // Summary counts
               Text(
-                'Evacuation_A: $evacACount Residents${evacACount == 1 ? '' : 's'}\n'
-                'Evacuation_B: $evacBCount Residents${evacBCount == 1 ? '' : 's'}',
+                'Evacuation_A: $evacACount item${evacACount == 1 ? '' : 's'}\n'
+                'Evacuation_B: $evacBCount item${evacBCount == 1 ? '' : 's'}',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.poppins(fontSize: 14),
               ),
@@ -1242,82 +1305,88 @@ class _ShowRegistrationPageFormWidgetState
     }
   }
 
+  Widget _buildFormCanvas() {
+    return Container(
+      width: _formWidth,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+      color: Colors.white,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildTitleSection(),
+          const SizedBox(height: 24),
+          _buildDisasterDateSection(),
+          const SizedBox(height: 60),
+          _buildLocationCivilRow(),
+          const SizedBox(height: 60),
+          _buildHeadOfFamilyRow(),
+          const SizedBox(height: 60),
+          _buildAdditionalInfoRow(),
+          const SizedBox(height: 50),
+          _buildBeneficiaryEthnicityRow(),
+          const SizedBox(height: 60),
+          _buildFamilyMembersTable(),
+          const SizedBox(height: 10),
+          _buildInformationBox(),
+          const SizedBox(height: 40),
+          _buildHeadOfFamilyImageSection(),
+          const SizedBox(height: 40),
+          _buildDateRegisteredSection(),
+          const SizedBox(height: 40),
+          _buildSubmitButton(),
+          const SizedBox(height: 80),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        SingleChildScrollView(
-          scrollDirection: Axis.vertical,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: InteractiveViewer(
-              transformationController: _controller,
-              minScale: _minScale,
-              maxScale: _maxScale,
-              panEnabled: true,
-              scaleEnabled: true,
-              boundaryMargin: const EdgeInsets.all(100),
-              child: Container(
-                width: 1590,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 18,
-                ),
-                color: Colors.white,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildTitleSection(),
-                    const SizedBox(height: 24),
-                    _buildDisasterDateSection(),
-                    const SizedBox(height: 60),
-                    _buildLocationCivilRow(),
-                    const SizedBox(height: 60),
-                    _buildHeadOfFamilyRow(),
-                    const SizedBox(height: 60),
-                    _buildAdditionalInfoRow(),
-                    const SizedBox(height: 50),
-                    _buildBeneficiaryEthnicityRow(),
-                    const SizedBox(height: 60),
-                    _buildFamilyMembersTable(),
-                    const SizedBox(height: 40),
-                    _buildInformationBox(),
-                    const SizedBox(height: 40),
-                    _buildHeadOfFamilyImageSection(),
-                    const SizedBox(height: 40),
-                    _buildDateRegisteredSection(),
-                    const SizedBox(height: 40),
-                    _buildSubmitButton(),
-                  ],
-                ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _initializeZoom(constraints);
+
+        return Stack(
+          children: [
+            ClipRect(
+              child: InteractiveViewer(
+                transformationController: _controller,
+                minScale: _minScale,
+                maxScale: _maxScale,
+                panEnabled: true,
+                scaleEnabled: true,
+                constrained: false,
+                alignment: Alignment.topLeft,
+                boundaryMargin: const EdgeInsets.all(3000),
+                child: _buildFormCanvas(),
               ),
             ),
-          ),
-        ),
-        Positioned(
-          bottom: 20,
-          right: 20,
-          child: Column(
-            children: [
-              _buildZoomButton(Icons.add, Colors.green, _zoomIn, 'Zoom In'),
-              const SizedBox(height: 6),
-              _buildZoomButton(
-                Icons.remove,
-                Colors.orange,
-                _zoomOut,
-                'Zoom Out',
+            Positioned(
+              bottom: 20,
+              right: 20,
+              child: Column(
+                children: [
+                  _buildZoomButton(Icons.add, Colors.green, _zoomIn, 'Zoom In'),
+                  const SizedBox(height: 6),
+                  _buildZoomButton(
+                    Icons.remove,
+                    Colors.orange,
+                    _zoomOut,
+                    'Zoom Out',
+                  ),
+                  const SizedBox(height: 6),
+                  _buildZoomButton(
+                    Icons.fit_screen,
+                    const Color(0xFF0D743D),
+                    _resetZoom,
+                    'Fit to Screen',
+                  ),
+                ],
               ),
-              const SizedBox(height: 6),
-              _buildZoomButton(
-                Icons.refresh,
-                Colors.redAccent,
-                _resetZoom,
-                'Reset Zoom',
-              ),
-            ],
-          ),
-        ),
-      ],
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -2118,6 +2187,36 @@ class _ShowRegistrationPageFormWidgetState
         ),
       ],
     );
+  }
+
+  // ---------------- AGE CALCULATOR FUNCTION ----------------
+  String calculateAge(DateTime birthDate) {
+    final today = DateTime.now();
+
+    int years = today.year - birthDate.year;
+    int months = today.month - birthDate.month;
+    int days = today.day - birthDate.day;
+
+    // Adjust if day difference is negative
+    if (days < 0) {
+      months--;
+      final prevMonth = DateTime(today.year, today.month, 0).day;
+      days += prevMonth;
+    }
+
+    // Adjust if month difference is negative
+    if (months < 0) {
+      years--;
+      months += 12;
+    }
+
+    // If at least 1 year → return ONLY the number
+    if (years >= 1) {
+      return "$years";
+    }
+
+    // Otherwise → return months for babies
+    return "$months month${months == 1 ? '' : 's'}";
   }
 
   // -------------------- FAMILY MEMBERS TABLE --------------------

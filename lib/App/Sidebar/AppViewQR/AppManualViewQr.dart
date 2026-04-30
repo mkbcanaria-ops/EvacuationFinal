@@ -1,4 +1,5 @@
 // ignore_for_file: use_build_context_synchronously, unused_local_variable, unnecessary_null_comparison
+
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -31,6 +32,11 @@ class _AppManualViewQrPageState extends State<AppManualViewQrPage> {
   late String lastName;
   late String qrData;
 
+  final Color primaryGreen = const Color(0xFF0D743D);
+  final Color darkGreen = const Color(0xFF095B30);
+  final Color softBg = const Color(0xFFF4F7F6);
+  final Color cardBorder = const Color(0xFFE3EAE6);
+
   @override
   void initState() {
     super.initState();
@@ -41,9 +47,10 @@ class _AppManualViewQrPageState extends State<AppManualViewQrPage> {
   }
 
   String get fullName =>
-      "$firstName ${middleName.isNotEmpty ? middleName + ' ' : ''}$lastName";
+      "$firstName ${middleName.isNotEmpty ? '$middleName ' : ''}$lastName"
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
 
-  /// Generate QR for PDF
   Future<Uint8List> _generateQrBytes(String data, {double size = 130}) async {
     final painter = QrPainter(
       data: data,
@@ -52,13 +59,14 @@ class _AppManualViewQrPageState extends State<AppManualViewQrPage> {
       color: Colors.black,
       emptyColor: Colors.white,
     );
+
     final picData = await painter.toImageData(size);
     return picData!.buffer.asUint8List();
   }
 
-  /// Generate PDF
   Future<Uint8List> _generatePdf() async {
     final pdf = pw.Document();
+
     final pageFormat = PdfPageFormat(
       3.375 * PdfPageFormat.inch,
       4.5 * PdfPageFormat.inch,
@@ -104,6 +112,7 @@ class _AppManualViewQrPageState extends State<AppManualViewQrPage> {
                       ),
                     ],
                   ),
+
                   pw.Container(
                     width: 130,
                     height: 130,
@@ -118,6 +127,7 @@ class _AppManualViewQrPageState extends State<AppManualViewQrPage> {
                       child: pw.Image(pw.MemoryImage(qrBytesForPdf)),
                     ),
                   ),
+
                   pw.Column(
                     children: [
                       pw.SizedBox(height: 6),
@@ -137,6 +147,7 @@ class _AppManualViewQrPageState extends State<AppManualViewQrPage> {
                       ),
                     ],
                   ),
+
                   pw.Column(
                     children: [
                       pw.Divider(thickness: 0.4),
@@ -164,201 +175,390 @@ class _AppManualViewQrPageState extends State<AppManualViewQrPage> {
   Future<void> _printPage() async {
     try {
       final pdfBytes = await _generatePdf();
+
       await Printing.layoutPdf(
         onLayout: (_) async => pdfBytes,
         name: 'MSWDO_ID_${fullName.replaceAll(' ', '_')}.pdf',
       );
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to print: $e')));
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to print: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
   Future<void> _downloadPdf() async {
     try {
       final pdfBytes = await _generatePdf();
+
       await Printing.sharePdf(
         bytes: pdfBytes,
         filename: '${fullName.replaceAll(' ', '_')}_ID.pdf',
       );
 
-      showDialog(
-        context: context,
-        builder: (ctx) => Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
+      if (!mounted) return;
+
+      await _showDownloadSuccessDialog();
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to download: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _showDownloadSuccessDialog() async {
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        elevation: 0,
+        backgroundColor: Colors.white,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 340),
           child: Padding(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(
-                  Icons.check_circle_rounded,
-                  color: Color(0xFF0D743D),
-                  size: 70,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Download Successful!',
-                  style: GoogleFonts.poppins(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF0D743D),
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: primaryGreen.withOpacity(0.10),
+                  ),
+                  child: Icon(
+                    Icons.check_circle_rounded,
+                    color: primaryGreen,
+                    size: 26,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 Text(
-                  '${fullName}_ID.pdf has been downloaded.',
-                  style: GoogleFonts.poppins(fontSize: 15),
+                  'Download Successful',
                   textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0D743D),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black87,
                   ),
-                  child: Text(
-                    'OK',
-                    style: GoogleFonts.poppins(color: Colors.white),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '${fullName}_ID.pdf has been generated.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(
+                    fontSize: 12.2,
+                    height: 1.35,
+                    color: Colors.black54,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: 132,
+                  height: 36,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      elevation: 0,
+                      backgroundColor: primaryGreen,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    onPressed: () => Navigator.pop(ctx),
+                    child: Text(
+                      'OK',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12.2,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ),
               ],
             ),
           ),
         ),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('❌ Failed to download: $e')));
-    }
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final bool isWide = screenWidth > 800;
+
+    final double qrSize = isWide ? 260 : 220;
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: softBg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0D743D),
+        elevation: 0,
+        backgroundColor: primaryGreen,
+        surfaceTintColor: Colors.transparent,
+        centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: Colors.white,
+            size: 20,
+          ),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: Text(
-          'QR CODE GENERATED',
+          'QR Code Generated',
           style: GoogleFonts.poppins(
             fontWeight: FontWeight.w700,
-            fontSize: 17,
+            fontSize: 18,
             color: Colors.white,
           ),
         ),
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+        padding: EdgeInsets.fromLTRB(
+          isWide ? 28 : 18,
+          18,
+          isWide ? 28 : 18,
+          110,
+        ),
         child: Center(
-          child: Column(
-            children: [
-              const SizedBox(height: 60),
-              if (qrData.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[100],
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Colors.black12,
-                        blurRadius: 8,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: QrImageView(
-                    data: qrData,
-                    version: QrVersions.auto,
-                    size: 260,
-                    gapless: true,
-                    foregroundColor: Colors.black,
-                  ),
-                )
-              else
-                const Text("No QR code available"),
-              const SizedBox(height: 40),
-              Text(
-                'Head of the Family',
-                style: GoogleFonts.poppins(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                fullName,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.poppins(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF0D743D),
-                ),
-              ),
-            ],
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: Column(
+              children: [
+                _buildQrPreviewCard(qrSize),
+                const SizedBox(height: 16),
+                _buildResidentInfoCard(),
+              ],
+            ),
           ),
         ),
       ),
-      bottomNavigationBar: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black12,
-              blurRadius: 8,
-              offset: Offset(0, -2),
+      bottomNavigationBar: _buildBottomActions(isWide),
+    );
+  }
+
+  Widget _buildQrPreviewCard(double qrSize) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: cardBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Text(
+            'MSWDO Evacuation QR',
+            style: GoogleFonts.poppins(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: Colors.black87,
             ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: _printPage,
-                icon: const Icon(Icons.print, color: Colors.white),
-                label: Text(
-                  'Print ID',
-                  style: GoogleFonts.poppins(
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Scan this code to identify the resident record.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(fontSize: 12.5, color: Colors.black54),
+          ),
+          const SizedBox(height: 20),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFFF8FBF9), Color(0xFFF1F7F4)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: const Color(0xFFEAF0EC)),
+            ),
+            child: qrData.isNotEmpty
+                ? QrImageView(
+                    data: qrData,
+                    version: QrVersions.auto,
+                    size: qrSize,
+                    gapless: true,
+                    foregroundColor: Colors.black,
+                  )
+                : SizedBox(
+                    width: qrSize,
+                    height: qrSize,
+                    child: Icon(
+                      Icons.qr_code_2_rounded,
+                      size: 90,
+                      color: Colors.grey[500],
+                    ),
                   ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black87,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResidentInfoCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: cardBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.035),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: primaryGreen.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              'Head of the Family',
+              style: GoogleFonts.poppins(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: primaryGreen,
               ),
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: _downloadPdf,
-                icon: const Icon(Icons.download, color: Colors.white),
-                label: Text(
-                  'Download',
-                  style: GoogleFonts.poppins(fontSize: 17, color: Colors.white),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0D743D),
-                ),
-              ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            fullName,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(
+              fontSize: 23,
+              fontWeight: FontWeight.w700,
+              color: primaryGreen,
+              height: 1.25,
             ),
-          ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Generated via MSWDO System',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(fontSize: 12.5, color: Colors.black54),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomActions(bool isWide) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(isWide ? 28 : 18, 14, isWide ? 28 : 18, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: cardBorder)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.07),
+            blurRadius: 14,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: isWide
+            ? Row(
+                children: [
+                  Expanded(
+                    child: _buildActionButton(
+                      label: 'Print ID',
+                      icon: Icons.print_rounded,
+                      backgroundColor: Colors.black87,
+                      onPressed: _printPage,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: _buildActionButton(
+                      label: 'Download',
+                      icon: Icons.download_rounded,
+                      backgroundColor: primaryGreen,
+                      onPressed: _downloadPdf,
+                    ),
+                  ),
+                ],
+              )
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildActionButton(
+                    label: 'Print ID',
+                    icon: Icons.print_rounded,
+                    backgroundColor: Colors.black87,
+                    onPressed: _printPage,
+                  ),
+                  const SizedBox(height: 10),
+                  _buildActionButton(
+                    label: 'Download',
+                    icon: Icons.download_rounded,
+                    backgroundColor: primaryGreen,
+                    onPressed: _downloadPdf,
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _buildActionButton({
+    required String label,
+    required IconData icon,
+    required Color backgroundColor,
+    required VoidCallback onPressed,
+  }) {
+    return SizedBox(
+      height: 48,
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, color: Colors.white, size: 20),
+        label: Text(
+          label,
+          style: GoogleFonts.poppins(
+            fontSize: 14.5,
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+          ),
+        ),
+        style: ElevatedButton.styleFrom(
+          elevation: 0,
+          backgroundColor: backgroundColor,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
         ),
       ),
     );

@@ -1,5 +1,6 @@
-// ignore_for_file: use_build_context_synchronously, unnecessary_null_comparison
+// ignore_for_file: use_build_context_synchronously, unnecessary_null_comparison, unused_import, unused_field
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:evacutaion/WebPages/WebMainDashboard.dart';
@@ -55,12 +56,13 @@ class _WebShowRegistrationPageFormWidgetState
     extends State<WebShowRegistrationPageFormWidget> {
   final TransformationController _controller = TransformationController();
 
-  // Zoom settings
-  double _currentScale = 0.7; // Updated to be even more zoomed in
-  final double _initialScale = 0.4;
-  final double _minScale = 0.2;
-  final double _maxScale = 3.0;
-  final double _zoomStep = 0.1;
+  // Zoom / fitted-view settings
+  static const double _formWidth = 1760.0; // wide enough for the full table
+  double _fitScale = 0.4;
+  final double _minScale = 0.12;
+  final double _maxScale = 4.0;
+  final double _zoomStep = 0.15;
+  bool _zoomInitialized = false;
 
   // Controllers
   final TextEditingController _disasterController = TextEditingController();
@@ -93,12 +95,13 @@ class _WebShowRegistrationPageFormWidgetState
   Uint8List? _headImageBytes; // 👈 to store downloaded image
   String? _headImageUrl; // 👈 optional, to hold Supabase URL
   File? _headImageFile; // New image picked from gallery
-  double _baseScale = 1.0;
+  double _baseScale = 1.0; // kept for compatibility with old gesture variables
   final ScrollController _horizontalController = ScrollController();
   final ScrollController _verticalController = ScrollController();
   bool _isMousePanning = false;
   int? _activePointer;
-  final double _contentWidth = 1560.0; // width of the large form content
+  final double _contentWidth =
+      _formWidth; // kept for compatibility with old fields
   bool _didCenterOnce = false;
 
   // Civil Status
@@ -132,7 +135,6 @@ class _WebShowRegistrationPageFormWidgetState
     _dateController.text = DateFormat(
       'MMMM dd, yyyy • hh:mm a',
     ).format(DateTime.now());
-    _controller.value = Matrix4.identity()..scale(_initialScale);
     for (int i = 0; i < 5; i++) {
       _familyRows.add({
         'name': TextEditingController(),
@@ -150,21 +152,81 @@ class _WebShowRegistrationPageFormWidgetState
     _fetchRegistrationDetails();
   }
 
-  void _zoomIn() {
-    setState(() {
-      _currentScale = (_currentScale + _zoomStep).clamp(_minScale, _maxScale);
+  double _calculateFitScale(BoxConstraints constraints) {
+    final screenWidth = constraints.maxWidth.isFinite
+        ? constraints.maxWidth
+        : MediaQuery.of(context).size.width;
+
+    // Fit by width so the form is readable and not too zoomed out.
+    final widthScale = (screenWidth - 20) / _formWidth;
+    return widthScale.clamp(_minScale, _maxScale).toDouble();
+  }
+
+  Matrix4 _buildFitMatrix(BoxConstraints constraints, double scale) {
+    final screenWidth = constraints.maxWidth.isFinite
+        ? constraints.maxWidth
+        : MediaQuery.of(context).size.width;
+
+    final scaledWidth = _formWidth * scale;
+    final dx = math.max((screenWidth - scaledWidth) / 2, 0).toDouble();
+
+    return Matrix4.identity()
+      ..translate(dx, 0.0)
+      ..scale(scale);
+  }
+
+  void _initializeZoom(BoxConstraints constraints) {
+    final scale = _calculateFitScale(constraints);
+    _fitScale = scale;
+
+    if (_zoomInitialized) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      setState(() {
+        _controller.value = _buildFitMatrix(constraints, _fitScale);
+        _zoomInitialized = true;
+      });
     });
+  }
+
+  void _setZoomScale(double newScale) {
+    final currentMatrix = Matrix4.copy(_controller.value);
+    final currentScale = currentMatrix.getMaxScaleOnAxis();
+
+    if (currentScale == 0) return;
+
+    final ratio = newScale / currentScale;
+
+    setState(() {
+      _controller.value = currentMatrix..scale(ratio);
+    });
+  }
+
+  void _zoomIn() {
+    final currentScale = _controller.value.getMaxScaleOnAxis();
+    final newScale = (currentScale + _zoomStep).clamp(_minScale, _maxScale);
+    _setZoomScale(newScale.toDouble());
   }
 
   void _zoomOut() {
-    setState(() {
-      _currentScale = (_currentScale - _zoomStep).clamp(_minScale, _maxScale);
-    });
+    final currentScale = _controller.value.getMaxScaleOnAxis();
+    final newScale = (currentScale - _zoomStep).clamp(_minScale, _maxScale);
+    _setZoomScale(newScale.toDouble());
   }
 
   void _resetZoom() {
+    final size = MediaQuery.of(context).size;
+
+    final constraints = BoxConstraints(
+      maxWidth: size.width,
+      maxHeight: size.height,
+    );
+
     setState(() {
-      _currentScale = 0.6; // Updated reset to match new default
+      _fitScale = _calculateFitScale(constraints);
+      _controller.value = _buildFitMatrix(constraints, _fitScale);
     });
   }
 
@@ -1243,187 +1305,86 @@ class _WebShowRegistrationPageFormWidgetState
     }
   }
 
+  Widget _buildFormCanvas() {
+    return Container(
+      width: _formWidth,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+      color: Colors.white,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildTitleSection(),
+          const SizedBox(height: 24),
+          _buildDisasterDateSection(),
+          const SizedBox(height: 60),
+          _buildLocationCivilRow(),
+          const SizedBox(height: 60),
+          _buildHeadOfFamilyRow(),
+          const SizedBox(height: 60),
+          _buildAdditionalInfoRow(),
+          const SizedBox(height: 50),
+          _buildBeneficiaryEthnicityRow(),
+          const SizedBox(height: 60),
+          _buildFamilyMembersTable(),
+          const SizedBox(height: 10),
+          _buildInformationBox(),
+          const SizedBox(height: 40),
+          _buildHeadOfFamilyImageSection(),
+          const SizedBox(height: 40),
+          _buildDateRegisteredSection(),
+          const SizedBox(height: 40),
+          _buildSubmitButton(),
+          const SizedBox(height: 80),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Listener allows mouse-button panning and captures pointer events for desktop
     return LayoutBuilder(
       builder: (context, constraints) {
-        // After layout, center the scroll position once so the content appears visually centered
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!_didCenterOnce && _horizontalController.hasClients) {
-            final viewportWidth = constraints.maxWidth;
-            final scaledContentW = _contentWidth * _currentScale;
-            final offset = ((scaledContentW - viewportWidth) / 2).clamp(
-              0.0,
-              double.infinity,
-            );
-            if (_horizontalController.position.maxScrollExtent > 0) {
-              final target = offset.clamp(
-                0.0,
-                _horizontalController.position.maxScrollExtent,
-              );
-              _horizontalController.jumpTo(target);
-            }
-            _didCenterOnce = true;
-          }
-        });
+        _initializeZoom(constraints);
 
-        return Listener(
-          behavior: HitTestBehavior.opaque,
-          onPointerDown: (event) {
-            if (event.kind == PointerDeviceKind.mouse &&
-                (event.buttons & kSecondaryMouseButton) != 0) {
-              _isMousePanning = true;
-              _activePointer = event.pointer;
-            }
-          },
-          onPointerUp: (event) {
-            if (_activePointer == event.pointer) {
-              _isMousePanning = false;
-              _activePointer = null;
-            }
-          },
-          onPointerCancel: (event) {
-            if (_activePointer == event.pointer) {
-              _isMousePanning = false;
-              _activePointer = null;
-            }
-          },
-          onPointerMove: (event) {
-            // right-mouse drag panning for desktop
-            if (_isMousePanning && _activePointer == event.pointer) {
-              final delta = event.delta;
-              if (_horizontalController.hasClients) {
-                final newX = (_horizontalController.offset - delta.dx).clamp(
-                  0.0,
-                  _horizontalController.position.maxScrollExtent,
-                );
-                _horizontalController.jumpTo(newX);
-              }
-              if (_verticalController.hasClients) {
-                final newY = (_verticalController.offset - delta.dy).clamp(
-                  0.0,
-                  _verticalController.position.maxScrollExtent,
-                );
-                _verticalController.jumpTo(newY);
-              }
-            }
-          },
-          child: GestureDetector(
-            // preserve pinch-to-zoom behavior
-            onScaleStart: (details) {
-              _baseScale = _currentScale;
-            },
-            onScaleUpdate: (details) {
-              setState(() {
-                _currentScale = (_baseScale * details.scale).clamp(
-                  0.2,
-                  _maxScale,
-                );
-                _didCenterOnce = false; // recenter after pinch scale changes
-              });
-            },
-
-            // allow touch horizontal swipe panning
-            onHorizontalDragUpdate: (details) {
-              if (_horizontalController.hasClients) {
-                final dx =
-                    details.delta.dx / (_currentScale == 0 ? 1 : _currentScale);
-                final newOffset = (_horizontalController.offset - dx).clamp(
-                  0.0,
-                  _horizontalController.position.maxScrollExtent,
-                );
-                _horizontalController.jumpTo(newOffset);
-              }
-            },
-
-            child: Stack(
-              children: [
-                // vertical scroll -> horizontal scroll -> scaled content centered
-                SingleChildScrollView(
-                  controller: _verticalController,
-                  scrollDirection: Axis.vertical,
-                  child: SingleChildScrollView(
-                    controller: _horizontalController,
-                    scrollDirection: Axis.horizontal,
-                    // enable horizontal scrolling (touch, wheel, fling)
-                    physics: const ClampingScrollPhysics(),
-                    child: Center(
-                      // Center ensures the content visually sits in the middle when viewport is wider
-                      child: Transform.scale(
-                        scale: _currentScale,
-                        alignment: Alignment.center,
-                        child: Container(
-                          width: _contentWidth,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 18,
-                          ),
-                          color: Colors.white,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildTitleSection(),
-                              const SizedBox(height: 24),
-                              _buildDisasterDateSection(),
-                              const SizedBox(height: 60),
-                              _buildLocationCivilRow(),
-                              const SizedBox(height: 60),
-                              _buildHeadOfFamilyRow(),
-                              const SizedBox(height: 60),
-                              _buildAdditionalInfoRow(),
-                              const SizedBox(height: 50),
-                              _buildBeneficiaryEthnicityRow(),
-                              const SizedBox(height: 60),
-                              _buildFamilyMembersTable(),
-                              const SizedBox(height: 10),
-                              _buildInformationBox(),
-                              const SizedBox(height: 40),
-                              _buildHeadOfFamilyImageSection(),
-                              const SizedBox(height: 40),
-                              _buildDateRegisteredSection(),
-                              const SizedBox(height: 40),
-                              _buildSubmitButton(),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                /// floating zoom buttons (unchanged)
-                Positioned(
-                  bottom: 20,
-                  right: 20,
-                  child: Column(
-                    children: [
-                      _buildZoomButton(
-                        Icons.add,
-                        Colors.green,
-                        _zoomIn,
-                        'Zoom In',
-                      ),
-                      const SizedBox(height: 6),
-                      _buildZoomButton(
-                        Icons.remove,
-                        Colors.orange,
-                        _zoomOut,
-                        'Zoom Out',
-                      ),
-                      const SizedBox(height: 6),
-                      _buildZoomButton(
-                        Icons.refresh,
-                        Colors.redAccent,
-                        _resetZoom,
-                        'Reset Zoom',
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+        return Stack(
+          children: [
+            ClipRect(
+              child: InteractiveViewer(
+                transformationController: _controller,
+                minScale: _minScale,
+                maxScale: _maxScale,
+                panEnabled: true,
+                scaleEnabled: true,
+                constrained: false,
+                alignment: Alignment.topLeft,
+                boundaryMargin: const EdgeInsets.all(3000),
+                child: _buildFormCanvas(),
+              ),
             ),
-          ),
+            Positioned(
+              bottom: 20,
+              right: 20,
+              child: Column(
+                children: [
+                  _buildZoomButton(Icons.add, Colors.green, _zoomIn, 'Zoom In'),
+                  const SizedBox(height: 6),
+                  _buildZoomButton(
+                    Icons.remove,
+                    Colors.orange,
+                    _zoomOut,
+                    'Zoom Out',
+                  ),
+                  const SizedBox(height: 6),
+                  _buildZoomButton(
+                    Icons.fit_screen,
+                    const Color(0xFF0D743D),
+                    _resetZoom,
+                    'Fit to Screen',
+                  ),
+                ],
+              ),
+            ),
+          ],
         );
       },
     );

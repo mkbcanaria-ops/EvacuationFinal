@@ -1,19 +1,19 @@
-// ignore_for_file: unnecessary_type_check, unused_local_variable
+// ignore_for_file: unnecessary_type_check, unused_local_variable, unnecessary_null_comparison
 
 import 'package:evacutaion/App/MainDashbaord.dart';
 import 'package:evacutaion/App/Sidebar/AppManageResidents/ManageResidents.dart';
 import 'package:evacutaion/App/Sidebar/AppViewQR/ManageQR.dart';
+import 'package:evacutaion/App/Sidebar/Appreport/AppReport.dart';
 import 'package:evacutaion/App/Sidebar/Discharge%20Residents/AppDischargeFarmers.dart';
 import 'package:evacutaion/App/Sidebar/Discharge%20Residents/AppDischargeMagsaysay.dart';
-import 'package:evacutaion/App/Sidebar/Discharge%20Residents/AppDischargeNationalHigh.dart';
+import 'package:evacutaion/App/Sidebar/Discharge%20Residents/AppDischargeSantaHigh.dart';
 import 'package:evacutaion/App/Sidebar/Discharge%20Residents/AppDischargeRHU.dart';
 import 'package:evacutaion/App/Sidebar/Discharge%20Residents/AppDischargeSantaNational.dart';
 import 'package:evacutaion/App/Sidebar/Request/AppRequest.dart';
+import 'package:evacutaion/WebPages/sidebar/Report/Report.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:evacutaion/WebPages/sidebar/Report/Report.dart';
-import 'package:evacutaion/WebPages/sidebar/Request/Request.dart';
 
 class DischargeScanQrPage extends StatefulWidget {
   const DischargeScanQrPage({super.key});
@@ -32,74 +32,190 @@ class _DischargeScanQrPageState extends State<DischargeScanQrPage> {
   int _santaHighSchoolCount = 0;
   int _santaNationalHighSchoolCount = 0;
 
+  bool _isRefreshingCounts = false;
+  bool _isDischarging = false;
+
+  final Color primaryGreen = const Color(0xFF0D743D);
+  final Color darkGreen = const Color(0xFF095B30);
+  final Color softBg = const Color(0xFFF4F7F6);
+  final Color cardBorder = const Color(0xFFE3EAE6);
+
   @override
   void initState() {
     super.initState();
-    _fetchMagsaysayCenterCount();
-    _fetchFarmersCourtCount();
-    _fetchSantaRhuCount();
-    _fetchSantaHighSchoolCount();
-    _fetchSantaNationalHighSchoolCount();
+    _refreshCounts();
+  }
+
+  void _safeSetState(VoidCallback fn) {
+    if (!mounted) return;
+    setState(fn);
+  }
+
+  int _safeCount(dynamic result) {
+    if (result is List) return result.length;
+    return 0;
+  }
+
+  Future<int> _fetchCount({required String table, String? site}) async {
+    final supabase = Supabase.instance.client;
+
+    var query = supabase.from(table).select('UID');
+
+    if (site != null) {
+      query = query.eq('Site', site);
+    }
+
+    final result = await query.timeout(const Duration(seconds: 10));
+    return _safeCount(result);
+  }
+
+  Future<void> _refreshCounts() async {
+    if (_isRefreshingCounts) return;
+
+    _safeSetState(() {
+      _isRefreshingCounts = true;
+    });
+
+    try {
+      final results = await Future.wait<int>([
+        _fetchCount(
+          table: 'Evacuation_A',
+          site: 'Municipal Evacuation Center, Magsaysay',
+        ),
+        _fetchCount(
+          table: 'Evacuation_A',
+          site: 'Municipal Farmers Covered Court',
+        ),
+        _fetchCount(table: 'Evacuation_B'),
+        _fetchCount(table: 'Evacuation_A', site: 'Santa High School'),
+        _fetchCount(table: 'Evacuation_A', site: 'Santa National High School'),
+      ]);
+
+      if (!mounted) return;
+
+      _safeSetState(() {
+        _magsaysayCount = results[0];
+        _farmersCourtCount = results[1];
+        _santaRhuCount = results[2];
+        _santaHighSchoolCount = results[3];
+        _santaNationalHighSchoolCount = results[4];
+        _isRefreshingCounts = false;
+      });
+
+      _checkCapacityWarnings();
+    } catch (e) {
+      debugPrint('❌ Error refreshing counts: $e');
+
+      if (!mounted) return;
+
+      _safeSetState(() {
+        _magsaysayCount = 0;
+        _farmersCourtCount = 0;
+        _santaRhuCount = 0;
+        _santaHighSchoolCount = 0;
+        _santaNationalHighSchoolCount = 0;
+        _isRefreshingCounts = false;
+      });
+    }
+  }
+
+  void _checkCapacityWarnings() {
+    if (!mounted) return;
+
+    final List<String> fullCenters = [];
+
+    if (_magsaysayCount >= 250) {
+      fullCenters.add('Municipal Evacuation Center - Magsaysay');
+    }
+
+    if (_farmersCourtCount >= 200) {
+      fullCenters.add('Municipal Farmer’s Covered Court');
+    }
+
+    if (_santaRhuCount >= 150) {
+      fullCenters.add('Santa RHU');
+    }
+
+    if (_santaHighSchoolCount >= 120) {
+      fullCenters.add('Santa High School (Supplemental)');
+    }
+
+    if (_santaNationalHighSchoolCount >= 100) {
+      fullCenters.add('Santa National High School (Supplemental)');
+    }
+
+    if (fullCenters.isEmpty) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      _showCapacityFullDialog(fullCenters.join('\n'));
+    });
   }
 
   void _showCapacityFullDialog(String centerName) {
+    if (!mounted) return;
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 25),
+          padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 85,
-                height: 85,
+                width: 58,
+                height: 58,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.amber.withOpacity(0.15),
+                  color: Colors.amber.withOpacity(0.14),
                 ),
-                child: const Center(
-                  child: Icon(
-                    Icons.warning_amber_rounded,
-                    color: Colors.amber,
-                    size: 55,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              Text(
-                'Capacity Full',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.poppins(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black87,
+                child: const Icon(
+                  Icons.warning_amber_rounded,
+                  color: Colors.amber,
+                  size: 36,
                 ),
               ),
               const SizedBox(height: 12),
               Text(
+                'Capacity Full',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.poppins(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
                 '$centerName has reached or exceeded its capacity.',
                 textAlign: TextAlign.center,
-                style: GoogleFonts.poppins(fontSize: 16, color: Colors.black87),
+                style: GoogleFonts.poppins(
+                  fontSize: 12.5,
+                  height: 1.4,
+                  color: Colors.black54,
+                ),
               ),
-              const SizedBox(height: 25),
+              const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
+                height: 40,
                 child: ElevatedButton(
                   onPressed: () => Navigator.of(context).pop(),
                   style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    backgroundColor: const Color(0xFF0D743D),
+                    elevation: 0,
+                    backgroundColor: primaryGreen,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(10),
                     ),
                   ),
                   child: Text(
                     'OK',
                     style: GoogleFonts.poppins(
-                      fontSize: 16,
+                      fontSize: 13,
                       color: Colors.white,
                       fontWeight: FontWeight.w600,
                     ),
@@ -113,604 +229,912 @@ class _DischargeScanQrPageState extends State<DischargeScanQrPage> {
     );
   }
 
-  // ===================== FETCH FUNCTIONS =====================
-  Future<void> _fetchMagsaysayCenterCount() async {
-    final supabase = Supabase.instance.client;
-
-    try {
-      final result = await supabase
-          .from('Evacuation_A')
-          .select('UID')
-          .eq('Site', 'Municipal Evacuation Center, Magsaysay')
-          .timeout(const Duration(seconds: 10));
-
-      debugPrint('🔍 Raw result for Magsaysay: $result');
-      debugPrint('🔍 Result type: ${result.runtimeType}');
-
-      int count = 0;
-      if (result is List) {
-        count = result.length;
-        debugPrint('🔍 List length (count): $count');
-        if (count > 0) {
-          debugPrint('🔍 First few rows: ${result.take(3)}');
-        }
-      } else {
-        debugPrint('❌ Result is not a List: $result');
-      }
-
-      setState(() {
-        _magsaysayCount = count;
-      });
-
-      if (_magsaysayCount >= 250) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _showCapacityFullDialog("Municipal Evacuation Center - Magsaysay");
-        });
-      }
-    } catch (e) {
-      debugPrint('❌ Error fetching Magsaysay center count: $e');
-      setState(() => _magsaysayCount = 0);
-    }
-  }
-
-  Future<void> _fetchFarmersCourtCount() async {
-    final supabase = Supabase.instance.client;
-
-    try {
-      final result = await supabase
-          .from('Evacuation_A')
-          .select('UID')
-          .eq('Site', 'Municipal Farmers Covered Court')
-          .timeout(const Duration(seconds: 10));
-
-      debugPrint('🔍 Raw result for Farmers Court: $result');
-      debugPrint('🔍 Result type: ${result.runtimeType}');
-
-      int count = 0;
-      if (result is List) {
-        count = result.length;
-        debugPrint('🔍 List length (count): $count');
-        if (count > 0) {
-          debugPrint('🔍 First few rows: ${result.take(3)}');
-        }
-      } else {
-        debugPrint('❌ Result is not a List: $result');
-      }
-
-      setState(() {
-        _farmersCourtCount = count;
-      });
-
-      if (_farmersCourtCount >= 200) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _showCapacityFullDialog("Municipal Farmer’s Covered Court");
-        });
-      }
-    } catch (e) {
-      debugPrint('❌ Error fetching Farmers Court count: $e');
-      setState(() => _farmersCourtCount = 0);
-    }
-  }
-
-  Future<void> _fetchSantaRhuCount() async {
-    final supabase = Supabase.instance.client;
-
-    try {
-      final result = await supabase
-          .from('Evacuation_B')
-          .select('UID')
-          .timeout(const Duration(seconds: 10));
-
-      debugPrint('🔍 Raw result for Santa RHU (Evacuation_B): $result');
-      debugPrint('🔍 Result type: ${result.runtimeType}');
-
-      int count = 0;
-      if (result is List) {
-        count = result.length;
-        debugPrint('🔍 List length (count): $count');
-        if (count > 0) {
-          debugPrint('🔍 First few rows: ${result.take(3)}');
-        }
-      } else {
-        debugPrint('❌ Result is not a List: $result');
-      }
-
-      setState(() {
-        _santaRhuCount = count;
-      });
-
-      if (_santaRhuCount >= 150) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _showCapacityFullDialog("Santa RHU");
-        });
-      }
-    } catch (e) {
-      debugPrint('❌ Error fetching Santa RHU count: $e');
-      setState(() => _santaRhuCount = 0);
-    }
-  }
-
-  Future<void> _fetchSantaHighSchoolCount() async {
-    final supabase = Supabase.instance.client;
-
-    try {
-      final result = await supabase
-          .from('Evacuation_A')
-          .select('UID')
-          .eq('Site', 'Santa High School')
-          .timeout(const Duration(seconds: 10));
-
-      debugPrint('🔍 Raw result for Santa High School: $result');
-      debugPrint('🔍 Result type: ${result.runtimeType}');
-
-      int count = 0;
-      if (result is List) {
-        count = result.length;
-        debugPrint('🔍 List length (count): $count');
-        if (count > 0) {
-          debugPrint('🔍 First few rows: ${result.take(3)}');
-        }
-      } else {
-        debugPrint('❌ Result is not a List: $result');
-      }
-
-      setState(() {
-        _santaHighSchoolCount = count;
-      });
-
-      if (_santaHighSchoolCount >= 120) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _showCapacityFullDialog("Santa High School (Supplemental)");
-        });
-      }
-    } catch (e) {
-      debugPrint('❌ Error fetching Santa High School count: $e');
-      setState(() => _santaHighSchoolCount = 0);
-    }
-  }
-
-  Future<void> _fetchSantaNationalHighSchoolCount() async {
-    final supabase = Supabase.instance.client;
-
-    try {
-      final result = await supabase
-          .from('Evacuation_A')
-          .select('UID')
-          .eq('Site', 'Santa National High School')
-          .timeout(const Duration(seconds: 10));
-
-      debugPrint('🔍 Raw result for Santa National High School: $result');
-      debugPrint('🔍 Result type: ${result.runtimeType}');
-
-      int count = 0;
-      if (result is List) {
-        count = result.length;
-        debugPrint('🔍 List length (count): $count');
-        if (count > 0) {
-          debugPrint('🔍 First few rows: ${result.take(3)}');
-        }
-      } else {
-        debugPrint('❌ Result is not a List: $result');
-      }
-
-      setState(() {
-        _santaNationalHighSchoolCount = count;
-      });
-
-      if (_santaNationalHighSchoolCount >= 100) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _showCapacityFullDialog("Santa National High School (Supplemental)");
-        });
-      }
-    } catch (e) {
-      debugPrint('❌ Error fetching Santa National High School count: $e');
-      setState(() => _santaNationalHighSchoolCount = 0);
-    }
-  }
-
   Future<void> _dischargeAllResidents() async {
-    if (!mounted) return;
+    if (!mounted || _isDischarging) return;
+
+    _safeSetState(() {
+      _isDischarging = true;
+    });
+
     final supabase = Supabase.instance.client;
 
+    bool toBool(dynamic value) {
+      if (value is bool) return value;
+      if (value is int) return value == 1;
+
+      if (value is String) {
+        final v = value.trim().toLowerCase();
+        return v == 'true' || v == '1' || v == 'yes';
+      }
+
+      return false;
+    }
+
+    String normalizeName(String value) {
+      return value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+    }
+
     try {
-      // STEP 1: Fetch all residents from Evacuation_A and Evacuation_B
-      final evacAData = await supabase.from('Evacuation_A').select('*');
+      final evacResults = await Future.wait([
+        supabase.from('Evacuation_A').select('*'),
+        supabase.from('Evacuation_B').select('*'),
+      ]);
 
-      final evacBData = await supabase.from('Evacuation_B').select('*');
+      if (!mounted) return;
 
+      final evacAData = List<Map<String, dynamic>>.from(evacResults[0]);
+      final evacBData = List<Map<String, dynamic>>.from(evacResults[1]);
       final combined = [...evacAData, ...evacBData];
 
       if (combined.isEmpty) {
-        // NO RESIDENTS POPUP
-        await showDialog<void>(
-          context: context,
-          barrierDismissible: false,
-          builder: (dCtx) {
-            return Dialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  vertical: 30,
-                  horizontal: 25,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 85,
-                      height: 85,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.orange.withOpacity(0.15),
-                      ),
-                      child: const Icon(
-                        Icons.warning,
-                        color: Colors.orange,
-                        size: 65,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    Text(
-                      'No Residents Found',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.poppins(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      'All evacuation centers are already empty.',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.poppins(fontSize: 15),
-                    ),
-                    const SizedBox(height: 25),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.of(dCtx).pop();
+        _safeSetState(() {
+          _isDischarging = false;
+        });
 
-                          if (mounted) {
-                            Navigator.pushReplacement(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    const DischargeScanQrPage(),
-                              ),
-                            );
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.orange,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: Text(
-                          'OK',
-                          style: GoogleFonts.poppins(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
+        await _showNoResidentsFoundDialog();
         return;
       }
 
-      // STEP 2: Group residents by UID and collect their details
-      final Map<String, dynamic> dischargeData = {};
-      final now = DateTime.now().toUtc().toIso8601String();
+      final now = DateTime.now().toIso8601String();
 
-      // Get unique UIDs
       final Set<String> uniqueUIDs = {};
-      for (var resident in combined) {
-        uniqueUIDs.add(resident['UID'].toString());
-      }
+      final Map<String, String> timeDeployedMap = {};
+      final Map<String, bool> fourPsFamiliesMap = {};
+      final Map<String, List<Map<String, dynamic>>> evacRowsByUid = {};
 
-      debugPrint('✅ Found ${uniqueUIDs.length} unique residents to discharge');
+      for (final resident in combined) {
+        final uid = resident['UID']?.toString() ?? '';
+        if (uid.isEmpty) continue;
 
-      // STEP 3: For each UID, fetch registration and family details
-      final List<Map<String, Object>> dischargeInserts = [];
+        uniqueUIDs.add(uid);
 
-      for (var uid in uniqueUIDs) {
-        try {
-          // Fetch registration data
-          final registrationData = await supabase
-              .from('Registration_Table')
-              .select('*')
-              .eq('UID', uid)
-              .maybeSingle();
-
-          // Fetch family members
-          final familyData = await supabase
-              .from('Family_Members')
-              .select('*')
-              .eq('UID', uid);
-
-          final regId = registrationData?['Registration_ID'].toString() ?? uid;
-
-          // Build head of family entry from registration data
-          if (registrationData != null) {
-            final headFullName =
-                '${registrationData['Head_Surname'] ?? ''} ${registrationData['Head_Firstname'] ?? ''} ${registrationData['Head_Middlename'] ?? ''}'
-                    .trim();
-
-            final headEntry = <String, Object>{
-              'UID': uid,
-              'Registration_ID': regId,
-              'Family_Member': headFullName,
-              'Relation': 'Head of Family',
-              'Age': registrationData['Head_Age'] ?? 0,
-              'Gender': registrationData['Head_Sex'] ?? '',
-              'Civil_Status': registrationData['Civil_Status'] ?? '',
-              'Education': registrationData['Education'] ?? '',
-              'Occupational_Skills': registrationData['Occupation'] ?? '',
-              'Remarks': 'Head of family entry',
-              'Code': '',
-              'Head_Surname': registrationData['Head_Surname'] ?? '',
-              'Head_Firstname': registrationData['Head_Firstname'] ?? '',
-              'Head_Middlename': registrationData['Head_Middlename'] ?? '',
-              'Head_Occupation': registrationData['Occupation'] ?? '',
-              'Head_Monthly_Income': registrationData['Monthly_Income'] ?? 0.0,
-              'City': registrationData['City'] ?? '',
-              'Municipality': registrationData['Municipality'] ?? '',
-              'Barangay': registrationData['Barangay'] ?? '',
-              'Site': registrationData['Site'] ?? '',
-              'Date_Transferred': now,
-              'Time_Discharge': now,
-            };
-            dischargeInserts.add(headEntry);
-          }
-
-          // Build family member entries
-          if (familyData != null && familyData.isNotEmpty) {
-            for (var member in familyData) {
-              final familyEntry = <String, Object>{
-                'UID': uid,
-                'Registration_ID': regId,
-                'Family_Member': member['Family_Member'] ?? '',
-                'Relation': member['Relation'] ?? '',
-                'Age': member['Age'] ?? 0,
-                'Gender': member['Gender'] ?? '',
-                'Civil_Status': member['Civil_Status'] ?? '',
-                'Education': member['Education'] ?? '',
-                'Occupational_Skills': member['Occupational_Skills'] ?? '',
-                'Remarks': member['Remarks'] ?? '',
-                'Code': member['Code'] ?? '',
-                'Site': registrationData?['Site'] ?? '',
-                'Date_Transferred': now,
-                'Time_Discharge': now,
-              };
-              dischargeInserts.add(familyEntry);
-            }
-          }
-        } catch (e) {
-          debugPrint('⚠️ Error fetching details for UID $uid: $e');
-        }
-      }
-
-      // STEP 4: Insert all discharge records
-      if (dischargeInserts.isNotEmpty) {
-        try {
-          await supabase.from('Discharge_Resident').insert(dischargeInserts);
-          debugPrint('✅ Inserted ${dischargeInserts.length} discharge records');
-        } catch (e) {
-          debugPrint('❌ Error inserting discharge records: $e');
-          throw Exception('Failed to insert discharge records: $e');
-        }
-      }
-
-      // STEP 5: Delete ALL residents from evacuation tables
-      await supabase.from('Evacuation_A').delete().neq('UID', '');
-      await supabase.from('Evacuation_B').delete().neq('UID', '');
-
-      debugPrint('🧹 ALL residents removed from evacuation tables');
-
-      // STEP 6: Show SUCCESS POPUP
-      if (mounted) {
-        await showDialog<void>(
-          context: context,
-          barrierDismissible: false,
-          builder: (dCtx) {
-            return Dialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  vertical: 30,
-                  horizontal: 25,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 85,
-                      height: 85,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: const Color(0xFF0D743D).withOpacity(0.15),
-                      ),
-                      child: const Icon(
-                        Icons.check_circle,
-                        color: Color(0xFF0D743D),
-                        size: 65,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    Text(
-                      'Discharge Successful',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.poppins(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      '${uniqueUIDs.length} resident(s) with ${dischargeInserts.length} total member(s) discharged successfully.',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.poppins(fontSize: 15),
-                    ),
-                    const SizedBox(height: 25),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.of(dCtx).pop();
-
-                          if (mounted) {
-                            Navigator.pushReplacement(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    const DischargeScanQrPage(),
-                              ),
-                            );
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0D743D),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: Text(
-                          'OK',
-                          style: GoogleFonts.poppins(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
+        timeDeployedMap.putIfAbsent(
+          uid,
+          () => (resident['Time_Deployed'] ?? '').toString(),
         );
+
+        evacRowsByUid
+            .putIfAbsent(uid, () => [])
+            .add(Map<String, dynamic>.from(resident));
+
+        final relation = (resident['Relation'] ?? '').toString().trim();
+
+        if (relation == 'Head of Family') {
+          final raw4ps = resident['4Ps_Families'];
+          fourPsFamiliesMap[uid] = toBool(raw4ps);
+        }
       }
+
+      final uidList = uniqueUIDs.toList();
+
+      if (uidList.isEmpty) {
+        _safeSetState(() {
+          _isDischarging = false;
+        });
+
+        await _showNoResidentsFoundDialog();
+        return;
+      }
+
+      final fetchedData = await Future.wait([
+        supabase
+            .from('Registration_Table')
+            .select('*')
+            .inFilter('UID', uidList),
+        supabase.from('Family_Members').select('*').inFilter('UID', uidList),
+      ]);
+
+      if (!mounted) return;
+
+      final registrations = List<Map<String, dynamic>>.from(fetchedData[0]);
+      final familyMembers = List<Map<String, dynamic>>.from(fetchedData[1]);
+
+      final Map<String, Map<String, dynamic>> registrationByUid = {};
+      for (final reg in registrations) {
+        final uid = reg['UID']?.toString() ?? '';
+        if (uid.isNotEmpty) {
+          registrationByUid[uid] = reg;
+        }
+      }
+
+      final Map<String, List<Map<String, dynamic>>> familyByUid = {};
+      for (final member in familyMembers) {
+        final uid = member['UID']?.toString() ?? '';
+        if (uid.isNotEmpty) {
+          familyByUid.putIfAbsent(uid, () => []).add(member);
+        }
+      }
+
+      final List<Map<String, Object?>> dischargeInserts = [];
+
+      for (final uid in uidList) {
+        final registrationData = registrationByUid[uid];
+        final familyData = familyByUid[uid] ?? [];
+
+        final regId = registrationData?['Registration_ID']?.toString() ?? uid;
+        final timeDeployed = timeDeployedMap[uid] ?? '';
+        final headBarangay = (registrationData?['Barangay'] ?? '').toString();
+        final fourPsFamilies = fourPsFamiliesMap[uid] ?? false;
+
+        final uidEvacRows = evacRowsByUid[uid] ?? [];
+        final Map<String, Map<String, dynamic>> evacRowByName = {};
+
+        for (final row in uidEvacRows) {
+          final name = (row['Family_Member'] ?? '').toString().trim();
+          if (name.isEmpty) continue;
+
+          evacRowByName[normalizeName(name)] = row;
+        }
+
+        if (registrationData != null) {
+          final headFullName =
+              '${registrationData['Head_Surname'] ?? ''} ${registrationData['Head_Firstname'] ?? ''} ${registrationData['Head_Middlename'] ?? ''}'
+                  .replaceAll(RegExp(r'\s+'), ' ')
+                  .trim();
+
+          final headEvacRow = evacRowByName[normalizeName(headFullName)];
+
+          final headActualSite =
+              (headEvacRow?['Site'] ?? registrationData['Site'] ?? '')
+                  .toString();
+
+          final headBirthDate = headEvacRow?['Date_of_Birth'];
+
+          dischargeInserts.add({
+            'UID': uid,
+            'Registration_ID': regId,
+            'Family_Member': headFullName,
+            'Relation': 'Head of Family',
+            'Age': registrationData['Head_Age'] ?? 0,
+            'Gender': registrationData['Head_Sex'] ?? '',
+            'Civil_Status': registrationData['Civil_Status'] ?? '',
+            'Education': registrationData['Education'] ?? '',
+            'Occupational_Skills': registrationData['Occupation'] ?? '',
+            'Remarks': 'Head of family entry',
+            'Code': '',
+            'Head_Surname': registrationData['Head_Surname'] ?? '',
+            'Head_Firstname': registrationData['Head_Firstname'] ?? '',
+            'Head_Middlename': registrationData['Head_Middlename'] ?? '',
+            'Head_Occupation': registrationData['Occupation'] ?? '',
+            'Head_Monthly_Income': registrationData['Monthly_Income'] ?? 0.0,
+            'City': registrationData['City'] ?? '',
+            'Municipality': registrationData['Municipality'] ?? '',
+            'Barangay': headBarangay,
+            'Site': headActualSite,
+            'BirthDate': headBirthDate,
+            'Date_Transferred': now,
+            'Time_Deployed': timeDeployed,
+            'Time_Discharge': now,
+            '4Ps_Families': fourPsFamilies,
+          });
+        }
+
+        for (final member in familyData) {
+          final memberName = (member['Family_Member'] ?? '').toString().trim();
+          final memberEvacRow = evacRowByName[normalizeName(memberName)];
+
+          final actualSite =
+              (memberEvacRow?['Site'] ?? registrationData?['Site'] ?? '')
+                  .toString();
+
+          final memberBirthDate = memberEvacRow?['Date_of_Birth'];
+
+          dischargeInserts.add({
+            'UID': uid,
+            'Registration_ID': regId,
+            'Family_Member': member['Family_Member'] ?? '',
+            'Relation': member['Relation'] ?? '',
+            'Age': member['Age'] ?? 0,
+            'Gender': member['Gender'] ?? '',
+            'Civil_Status': member['Civil_Status'] ?? '',
+            'Education': member['Education'] ?? '',
+            'Occupational_Skills': member['Occupational_Skills'] ?? '',
+            'Remarks': member['Remarks'] ?? '',
+            'Code': member['Code'] ?? '',
+            'Barangay': headBarangay,
+            'Site': actualSite,
+            'BirthDate': memberBirthDate,
+            'Date_Transferred': now,
+            'Time_Deployed': timeDeployed,
+            'Time_Discharge': now,
+            '4Ps_Families': fourPsFamilies,
+          });
+        }
+      }
+
+      if (dischargeInserts.isNotEmpty) {
+        await supabase.from('Discharge_Resident').insert(dischargeInserts);
+      }
+
+      if (!mounted) return;
+
+      await Future.wait([
+        supabase.from('Evacuation_A').delete().neq('UID', ''),
+        supabase.from('Evacuation_B').delete().neq('UID', ''),
+      ]);
+
+      if (!mounted) return;
+
+      _safeSetState(() {
+        _isDischarging = false;
+      });
+
+      await _showDischargeSuccessDialog(
+        residentCount: uniqueUIDs.length,
+        memberCount: dischargeInserts.length,
+      );
+
+      await _refreshCounts();
     } catch (e) {
       debugPrint('❌ Error discharging all residents: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ Failed to discharge all residents: $e')),
-        );
-      }
+
+      if (!mounted) return;
+
+      _safeSetState(() {
+        _isDischarging = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Failed to discharge all residents: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[100],
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF0D743D),
-        centerTitle: true,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: Text(
-          "Discharge Residents",
-          style: GoogleFonts.poppins(
-            fontSize: 22,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
-        ),
-      ),
-      drawer: _buildAdminDrawer(),
+  Future<void> _showNoResidentsFoundDialog() async {
+    if (!mounted) return;
 
-      // ✅ CENTERED FLOATING BUTTON
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: const Color(0xFF0D743D),
-        icon: const Icon(Icons.exit_to_app_rounded, color: Colors.white),
-        label: Text(
-          "Discharge All",
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dCtx) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
           ),
-        ),
-        onPressed: () {
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              title: Text(
-                "Confirm Discharge",
-                style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-              ),
-              content: Text(
-                "Are you sure you want to discharge ALL residents from all evacuation centers?",
-                style: GoogleFonts.poppins(),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text(
-                    "Cancel",
-                    style: GoogleFonts.poppins(color: Colors.grey),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 58,
+                  height: 58,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.orange.withOpacity(0.14),
+                  ),
+                  child: const Icon(
+                    Icons.warning,
+                    color: Colors.orange,
+                    size: 36,
                   ),
                 ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.redAccent,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                const SizedBox(height: 12),
+                Text(
+                  'No Residents Found',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black87,
                   ),
-                  onPressed: () async {
-                    Navigator.pop(context);
-                    await _dischargeAllResidents();
-                  },
-                  child: Text(
-                    "Discharge All",
-                    style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'All evacuation centers are already empty.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(
+                    fontSize: 12.5,
+                    height: 1.4,
+                    color: Colors.black54,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  height: 40,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(dCtx).pop();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: Text(
+                      'OK',
+                      style: GoogleFonts.poppins(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                 ),
               ],
             ),
-          );
-        },
-      ),
+          ),
+        );
+      },
+    );
+  }
 
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: constraints.maxWidth, // take full width
+  Future<void> _showDischargeSuccessDialog({
+    required int residentCount,
+    required int memberCount,
+  }) async {
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dCtx) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 58,
+                  height: 58,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: primaryGreen.withOpacity(0.14),
+                  ),
+                  child: const Icon(
+                    Icons.check_circle,
+                    color: Color(0xFF0D743D),
+                    size: 36,
+                  ),
                 ),
-                child: _buildResponsiveGrid(),
+                const SizedBox(height: 12),
+                Text(
+                  'Discharge Successful',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '$residentCount resident(s) with $memberCount total member(s) discharged successfully.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(
+                    fontSize: 12.5,
+                    height: 1.4,
+                    color: Colors.black54,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  height: 40,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(dCtx).pop();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryGreen,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: Text(
+                      'OK',
+                      style: GoogleFonts.poppins(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  int get _totalResidents =>
+      _magsaysayCount +
+      _farmersCourtCount +
+      _santaRhuCount +
+      _santaHighSchoolCount +
+      _santaNationalHighSchoolCount;
+
+  int get _totalCapacity => 250 + 180 + 150 + 120 + 110;
+
+  int get _availableSlots =>
+      (_totalCapacity - _totalResidents).clamp(0, 999999);
+
+  double get _overallProgress =>
+      _totalCapacity == 0 ? 0 : (_totalResidents / _totalCapacity).clamp(0, 1);
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Scaffold(
+          backgroundColor: softBg,
+          appBar: AppBar(
+            elevation: 0,
+            backgroundColor: primaryGreen,
+            centerTitle: true,
+            iconTheme: const IconThemeData(color: Colors.white),
+            title: Text(
+              "Discharge Residents",
+              style: GoogleFonts.poppins(
+                fontSize: 19,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
               ),
             ),
-          );
-        },
+          ),
+          drawer: _buildAdminDrawer(),
+          floatingActionButtonLocation:
+              FloatingActionButtonLocation.centerFloat,
+          floatingActionButton: FloatingActionButton.extended(
+            elevation: 3,
+            backgroundColor: _isDischarging
+                ? Colors.grey.shade500
+                : primaryGreen,
+            icon: _isDischarging
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.exit_to_app_rounded, color: Colors.white),
+            label: Text(
+              _isDischarging ? "Discharging..." : "Discharge All",
+              style: GoogleFonts.poppins(
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+            onPressed: _isDischarging ? null : _showDischargeAllConfirmDialog,
+          ),
+          body: RefreshIndicator(
+            color: primaryGreen,
+            onRefresh: _refreshCounts,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 94),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildTopBanner(),
+                  const SizedBox(height: 14),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final bool isWide = constraints.maxWidth > 1000;
+
+                      return Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          _buildSummaryCard(
+                            title: 'Total Residents',
+                            value: '$_totalResidents',
+                            icon: Icons.groups_rounded,
+                            color: primaryGreen,
+                            width: isWide ? 230 : constraints.maxWidth,
+                          ),
+                          _buildSummaryCard(
+                            title: 'Total Capacity',
+                            value: '$_totalCapacity',
+                            icon: Icons.meeting_room_rounded,
+                            color: const Color(0xFF0B5ED7),
+                            width: isWide ? 230 : constraints.maxWidth,
+                          ),
+                          _buildSummaryCard(
+                            title: 'Available Slots',
+                            value: '$_availableSlots',
+                            icon: Icons.event_seat_rounded,
+                            color: const Color(0xFFF39C12),
+                            width: isWide ? 230 : constraints.maxWidth,
+                          ),
+                          _buildSummaryCard(
+                            title: 'Occupancy',
+                            value:
+                                '${(_overallProgress * 100).toStringAsFixed(1)}%',
+                            icon: Icons.pie_chart_rounded,
+                            color: const Color(0xFF8E44AD),
+                            width: isWide ? 230 : constraints.maxWidth,
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    'Evacuation Centers',
+                    style: GoogleFonts.poppins(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    'Select a site to view and manage discharged residents.',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12.5,
+                      color: Colors.black54,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  _buildSiteGrid(),
+                ],
+              ),
+            ),
+          ),
+        ),
+
+        if (_isDischarging)
+          Container(
+            color: Colors.black.withOpacity(0.15),
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 18,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.12),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: primaryGreen),
+                    const SizedBox(height: 14),
+                    Text(
+                      'Discharging residents...',
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  void _showDischargeAllConfirmDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text(
+          "Confirm Discharge",
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+        ),
+        content: Text(
+          "Are you sure you want to discharge ALL residents from all evacuation centers?",
+          style: GoogleFonts.poppins(height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              "Cancel",
+              style: GoogleFonts.poppins(color: Colors.grey[700]),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              elevation: 0,
+              backgroundColor: Colors.redAccent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            onPressed: () async {
+              Navigator.pop(context);
+              await _dischargeAllResidents();
+            },
+            child: Text(
+              "Discharge All",
+              style: GoogleFonts.poppins(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  // ===================== SITE CARD =====================
+  Widget _buildSiteGrid() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double width = constraints.maxWidth;
+        const double spacing = 14;
+
+        int columns = 1;
+
+        if (width >= 1200) {
+          columns = 3;
+        } else if (width >= 760) {
+          columns = 2;
+        } else {
+          columns = 1;
+        }
+
+        final double itemWidth = (width - ((columns - 1) * spacing)) / columns;
+
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: [
+            SizedBox(
+              width: itemWidth,
+              child: _buildSiteCard(
+                "Municipal Evacuation Center, Magsaysay",
+                _magsaysayCount,
+                250,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const AppMagsaysayEvacuationPage(),
+                    ),
+                  );
+                },
+              ),
+            ),
+            SizedBox(
+              width: itemWidth,
+              child: _buildSiteCard(
+                "Municipal Farmers Covered Court",
+                _farmersCourtCount,
+                180,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const AppFarmersResidentsPage(),
+                    ),
+                  );
+                },
+              ),
+            ),
+            SizedBox(
+              width: itemWidth,
+              child: _buildSiteCard(
+                "Santa RHU",
+                _santaRhuCount,
+                150,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const AppSantaRHUResidentsPage(),
+                    ),
+                  );
+                },
+              ),
+            ),
+            SizedBox(
+              width: itemWidth,
+              child: _buildSiteCard(
+                "Santa High School (Supplemental)",
+                _santaHighSchoolCount,
+                120,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          const AppSantaHighSchoolResidentsPage(),
+                    ),
+                  );
+                },
+              ),
+            ),
+            SizedBox(
+              width: itemWidth,
+              child: _buildSiteCard(
+                "Santa National High School (Supplemental)",
+                _santaNationalHighSchoolCount,
+                110,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          const AppSantaNationalHighSchoolResidentsPage(),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildTopBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          colors: [primaryGreen, darkGreen],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: primaryGreen.withOpacity(0.14),
+            blurRadius: 16,
+            offset: const Offset(0, 7),
+          ),
+        ],
+      ),
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        runSpacing: 10,
+        spacing: 12,
+        children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 650),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Discharge Dashboard',
+                  style: GoogleFonts.poppins(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    height: 1.15,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Monitor occupancy and discharge residents across all sites.',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12.5,
+                    height: 1.35,
+                    color: Colors.white.withOpacity(0.90),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(color: Colors.white.withOpacity(0.15)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.local_hospital_rounded,
+                  color: Colors.white,
+                  size: 17,
+                ),
+                const SizedBox(width: 7),
+                Text(
+                  '5 Active Sites',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryCard({
+    required String title,
+    required String value,
+    required IconData icon,
+    required Color color,
+    required double width,
+  }) {
+    return Container(
+      width: width,
+      constraints: const BoxConstraints(minHeight: 92),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: cardBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.035),
+            blurRadius: 12,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: color, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: Colors.black54,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: GoogleFonts.poppins(
+                    fontSize: 21,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSiteCard(
     String site,
     int currentCount,
@@ -719,74 +1143,150 @@ class _DischargeScanQrPageState extends State<DischargeScanQrPage> {
   }) {
     final bool isSelected = selectedSite == site;
     final double progress = (currentCount / capacity).clamp(0, 1).toDouble();
+    final int remaining = (capacity - currentCount).clamp(0, 999999);
+    final bool isFull = currentCount >= capacity;
+
+    Color statusColor;
+    String statusText;
+
+    if (isFull) {
+      statusColor = Colors.redAccent;
+      statusText = 'Full';
+    } else if (progress >= 0.8) {
+      statusColor = Colors.orange;
+      statusText = 'Nearly Full';
+    } else {
+      statusColor = primaryGreen;
+      statusText = 'Available';
+    }
 
     return InkWell(
-      onTap: onTap ?? () => setState(() => selectedSite = site),
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(28),
+      onTap:
+          onTap ??
+          () {
+            _safeSetState(() {
+              selectedSite = site;
+            });
+          },
+      borderRadius: BorderRadius.circular(20),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF0D743D) : Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          color: isSelected ? const Color(0xFFF1F8F4) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? primaryGreen : cardBorder,
+            width: isSelected ? 1.4 : 1,
+          ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black12.withOpacity(0.05),
+              color: Colors.black.withOpacity(0.035),
               blurRadius: 12,
-              offset: const Offset(0, 4),
+              offset: const Offset(0, 5),
             ),
           ],
         ),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  Icons.location_on_rounded,
-                  size: 28,
-                  color: isSelected ? Colors.white : const Color(0xFF0D743D),
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: primaryGreen.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    Icons.location_on_rounded,
+                    size: 24,
+                    color: primaryGreen,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     site,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.poppins(
-                      fontSize: 16,
+                      fontSize: 14.5,
                       fontWeight: FontWeight.w600,
-                      color: isSelected ? Colors.white : Colors.black87,
+                      color: Colors.black87,
+                      height: 1.35,
                     ),
                   ),
                 ),
-                if (isSelected)
-                  const Icon(Icons.check_circle, color: Colors.white),
+                if (isSelected) ...[
+                  const SizedBox(width: 8),
+                  Icon(Icons.check_circle, color: primaryGreen, size: 22),
+                ],
+              ],
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    statusText,
+                    style: GoogleFonts.poppins(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: statusColor,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Flexible(
+                  child: Text(
+                    '$currentCount / $capacity',
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.poppins(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 12),
-            LinearProgressIndicator(
-              value: progress,
-              minHeight: 8,
-              backgroundColor: Colors.grey[200],
-              color: progress >= 1 ? Colors.redAccent : const Color(0xFF0D743D),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(99),
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 8,
+                backgroundColor: Colors.grey.shade200,
+                valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+              ),
             ),
             const SizedBox(height: 12),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Current: $currentCount / $capacity',
-                  style: GoogleFonts.poppins(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: isSelected ? Colors.white70 : Colors.black54,
+                Expanded(
+                  child: _buildSmallInfo(
+                    'Current',
+                    currentCount.toString(),
+                    Icons.people_alt_rounded,
                   ),
                 ),
-                Text(
-                  'Remaining: ${capacity - currentCount}',
-                  style: GoogleFonts.poppins(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: isSelected ? Colors.white70 : Colors.black54,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _buildSmallInfo(
+                    'Remaining',
+                    remaining.toString(),
+                    Icons.event_seat_rounded,
                   ),
                 ),
               ],
@@ -797,140 +1297,127 @@ class _DischargeScanQrPageState extends State<DischargeScanQrPage> {
     );
   }
 
-  // ===================== RESPONSIVE GRID =====================
-  Widget _buildResponsiveGrid() {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final orientation = MediaQuery.of(context).orientation;
-
-    int crossAxisCount;
-    double childAspectRatio;
-
-    if (orientation == Orientation.portrait) {
-      crossAxisCount = 1; // 1 card per row for full width
-      childAspectRatio = screenWidth / 150; // height approx. 150
-    } else {
-      crossAxisCount = screenWidth > 1200
-          ? 4
-          : 2; // multiple cards for landscape
-      childAspectRatio = 16 / 9;
-    }
-
-    final List<Widget> cards = [
-      _buildSiteCard(
-        "Municipal Evacuation Center, Magsaysay",
-        _magsaysayCount,
-        250,
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const AppMagsaysayEvacuationPage(),
-            ),
-          );
-        },
+  Widget _buildSmallInfo(String label, String value, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAF9),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cardBorder),
       ),
-      _buildSiteCard(
-        "Municipal Farmers Covered Court",
-        _farmersCourtCount,
-        180,
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const AppFarmersResidentsPage(),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: primaryGreen),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: GoogleFonts.poppins(
+                    fontSize: 10.5,
+                    color: Colors.black54,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  value,
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    color: Colors.black87,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
             ),
-          );
-        },
+          ),
+        ],
       ),
-      _buildSiteCard(
-        "Santa RHU",
-        _santaRhuCount,
-        150,
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const AppSantaRHUResidentsPage(),
-            ),
-          );
-        },
-      ),
-      _buildSiteCard(
-        "Santa High School (Supplemental)",
-        _santaHighSchoolCount,
-        120,
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const AppSantaHighSchoolResidentsPage(),
-            ),
-          );
-        },
-      ),
-      _buildSiteCard(
-        "Santa National High School (Supplemental)",
-        _santaNationalHighSchoolCount,
-        110,
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) =>
-                  const AppSantaNationalHighSchoolResidentsPage(),
-            ),
-          );
-        },
-      ),
-    ];
-
-    return GridView.count(
-      crossAxisCount: crossAxisCount,
-      crossAxisSpacing: 24,
-      mainAxisSpacing: 24,
-      childAspectRatio: childAspectRatio,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      children: cards,
     );
   }
 
-  // ===================== DASHBOARD DRAWER =====================
   Widget _buildAdminDrawer() {
     return Drawer(
+      backgroundColor: Colors.white,
       child: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              DrawerHeader(
-                decoration: const BoxDecoration(color: Color(0xFF0D743D)),
-                child: Align(
-                  alignment: Alignment.bottomLeft,
-                  child: Text(
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(20, 26, 20, 22),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [primaryGreen, darkGreen],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const CircleAvatar(
+                    radius: 26,
+                    backgroundColor: Colors.white24,
+                    child: Icon(
+                      Icons.admin_panel_settings_rounded,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
                     'Admin Dashboard',
                     style: GoogleFonts.poppins(
-                      fontSize: 22,
+                      fontSize: 21,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                     ),
                   ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Evacuation Management System',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12.5,
+                      color: Colors.white.withOpacity(0.90),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Column(
+                  children: [
+                    _buildDrawerItem('Dashboard', Icons.dashboard_outlined),
+                    _buildDrawerItem(
+                      'Resident Management',
+                      Icons.people_alt_outlined,
+                    ),
+                    _buildDrawerItem('QR Code Management', Icons.qr_code_2),
+                    _buildDrawerItem(
+                      'Discharge Residents',
+                      Icons.exit_to_app_rounded,
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 10,
+                      ),
+                      child: Divider(color: Colors.grey.shade300),
+                    ),
+                    _buildDrawerItem('Reports', Icons.analytics_outlined),
+                    _buildDrawerItem(
+                      'Requests',
+                      Icons.pending_actions_outlined,
+                    ),
+                  ],
                 ),
               ),
-              _buildDrawerItem('Dashboard', Icons.dashboard_outlined),
-              _buildDrawerItem(
-                'Resident Management',
-                Icons.people_alt_outlined,
-              ),
-              _buildDrawerItem('QR Code Management', Icons.qr_code_2),
-              _buildDrawerItem(
-                'Discharge Residents',
-                Icons.exit_to_app_rounded,
-              ),
-              const Divider(),
-              _buildDrawerItem('Reports', Icons.analytics_outlined),
-              _buildDrawerItem('Requests', Icons.pending_actions_outlined),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -939,53 +1426,69 @@ class _DischargeScanQrPageState extends State<DischargeScanQrPage> {
   Widget _buildDrawerItem(String title, IconData icon) {
     final bool isSelected = selectedPage == title;
 
-    return ListTile(
-      leading: Icon(
-        icon,
-        color: isSelected ? const Color(0xFF0D743D) : Colors.black54,
-      ),
-      tileColor: isSelected ? const Color(0xFF0D743D).withOpacity(0.1) : null,
-      title: Text(
-        title,
-        style: GoogleFonts.poppins(
-          fontSize: 16,
-          fontWeight: FontWeight.w500,
-          color: isSelected ? const Color(0xFF0D743D) : Colors.black,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Material(
+        color: isSelected ? primaryGreen.withOpacity(0.10) : Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: ListTile(
+          dense: true,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          leading: Icon(
+            icon,
+            color: isSelected ? primaryGreen : Colors.black54,
+          ),
+          title: Text(
+            title,
+            style: GoogleFonts.poppins(
+              fontSize: 14.5,
+              fontWeight: FontWeight.w500,
+              color: isSelected ? primaryGreen : Colors.black87,
+            ),
+          ),
+          onTap: () {
+            _safeSetState(() {
+              selectedPage = title;
+            });
+
+            Navigator.pop(context);
+
+            if (title == 'Dashboard') {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const MainDashboard()),
+              );
+            } else if (title == 'Resident Management') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ManageResidentsPage()),
+              );
+            } else if (title == 'QR Code Management') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const DisplayAllQrPage()),
+              );
+            } else if (title == 'Discharge Residents') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const DischargeScanQrPage()),
+              );
+            } else if (title == 'Reports') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AppReportsPage()),
+              );
+            } else if (title == 'Requests') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AppRequestsPage()),
+              );
+            }
+          },
         ),
       ),
-      onTap: () {
-        setState(() => selectedPage = title);
-        Navigator.pop(context);
-
-        if (title == 'Dashboard') {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const MainDashboard()),
-          );
-        } else if (title == 'Resident Management') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const ManageResidentsPage(),
-            ),
-          );
-        } else if (title == 'QR Code Management') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const DisplayAllQrPage()),
-          );
-        } else if (title == 'Reports') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const WebReportsPage()),
-          );
-        } else if (title == 'Requests') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const AppRequestsPage()),
-          );
-        }
-      },
     );
   }
 }

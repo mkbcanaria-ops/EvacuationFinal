@@ -1,16 +1,15 @@
 // ignore_for_file: unnecessary_type_check
 
+import 'package:evacutaion/App/Sidebar/Appreport/AppReport.dart';
 import 'package:evacutaion/App/Sidebar/Discharge%20Residents/DischargeResidentScanner.dart';
 import 'package:evacutaion/App/AppResidentDeployment/Qr_Scanner.dart';
 import 'package:evacutaion/App/RegistrationPage.dart';
 import 'package:evacutaion/App/Sidebar/AppViewQR/ManageQR.dart';
 import 'package:evacutaion/App/Sidebar/AppManageResidents/ManageResidents.dart';
 import 'package:evacutaion/App/Sidebar/Request/AppRequest.dart';
-import 'package:evacutaion/WebPages/sidebar/Report/Report.dart';
-import 'package:evacutaion/WebPages/sidebar/Request/Request.dart';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class MainDashboard extends StatefulWidget {
@@ -22,6 +21,7 @@ class MainDashboard extends StatefulWidget {
 
 class _MainDashboardState extends State<MainDashboard> {
   String selectedPage = 'Dashboard';
+
   int _registeredResidents = 0;
   bool _isLoading = true;
   int _evacuatedResidents = 0;
@@ -30,6 +30,11 @@ class _MainDashboardState extends State<MainDashboard> {
   int _santaRhuCount = 0;
   int _santaHighSchoolCount = 0;
   int _santaNationalHighSchoolCount = 0;
+
+  final Color primaryGreen = const Color(0xFF0D743D);
+  final Color darkGreen = const Color(0xFF095B30);
+  final Color softBg = const Color(0xFFF4F7F6);
+  final Color cardBorder = const Color(0xFFE3EAE6);
 
   @override
   void initState() {
@@ -57,7 +62,6 @@ class _MainDashboardState extends State<MainDashboard> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // ⚠️ Warning icon in amber
                 Container(
                   width: 85,
                   height: 85,
@@ -73,10 +77,7 @@ class _MainDashboardState extends State<MainDashboard> {
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 18),
-
-                // Title
                 Text(
                   'Capacity Full',
                   textAlign: TextAlign.center,
@@ -86,10 +87,7 @@ class _MainDashboardState extends State<MainDashboard> {
                     color: Colors.black87,
                   ),
                 ),
-
                 const SizedBox(height: 12),
-
-                // Message
                 Text(
                   '$centerName has reached or exceeded its capacity.',
                   textAlign: TextAlign.center,
@@ -98,17 +96,14 @@ class _MainDashboardState extends State<MainDashboard> {
                     color: Colors.black87,
                   ),
                 ),
-
                 const SizedBox(height: 25),
-
-                // OK Button (green accent)
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: () => Navigator.of(context).pop(),
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
-                      backgroundColor: const Color(0xFF0D743D),
+                      backgroundColor: primaryGreen,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -145,9 +140,11 @@ class _MainDashboardState extends State<MainDashboard> {
       debugPrint('🔍 Result type: ${result.runtimeType}');
 
       int count = 0;
+
       if (result is List) {
         count = result.length;
         debugPrint('🔍 List length (count): $count');
+
         if (count > 0) {
           debugPrint('🔍 First few rows: ${result.take(3)}');
         }
@@ -159,7 +156,6 @@ class _MainDashboardState extends State<MainDashboard> {
         _magsaysayCount = count;
       });
 
-      // Check if capacity is full
       if (_magsaysayCount >= 250) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _showCapacityFullDialog("Municipal Evacuation Center - Magsaysay");
@@ -185,9 +181,11 @@ class _MainDashboardState extends State<MainDashboard> {
       debugPrint('🔍 Result type: ${result.runtimeType}');
 
       int count = 0;
+
       if (result is List) {
         count = result.length;
         debugPrint('🔍 List length (count): $count');
+
         if (count > 0) {
           debugPrint('🔍 First few rows: ${result.take(3)}');
         }
@@ -199,7 +197,6 @@ class _MainDashboardState extends State<MainDashboard> {
         _farmersCourtCount = count;
       });
 
-      // Check if capacity is full
       if (_farmersCourtCount >= 200) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _showCapacityFullDialog("Municipal Farmer’s Covered Court");
@@ -217,18 +214,18 @@ class _MainDashboardState extends State<MainDashboard> {
     try {
       final result = await supabase
           .from('Evacuation_B')
-          .select(
-            'UID',
-          ) // Select any column to get the rows; we'll count the length
+          .select('UID')
           .timeout(const Duration(seconds: 10));
 
       debugPrint('🔍 Raw result for Santa RHU (Evacuation_B): $result');
       debugPrint('🔍 Result type: ${result.runtimeType}');
 
       int count = 0;
+
       if (result is List) {
         count = result.length;
         debugPrint('🔍 List length (count): $count');
+
         if (count > 0) {
           debugPrint('🔍 First few rows: ${result.take(3)}');
         }
@@ -240,7 +237,6 @@ class _MainDashboardState extends State<MainDashboard> {
         _santaRhuCount = count;
       });
 
-      // Check if capacity is full
       if (_santaRhuCount >= 150) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _showCapacityFullDialog("Santa RHU");
@@ -266,9 +262,11 @@ class _MainDashboardState extends State<MainDashboard> {
       debugPrint('🔍 Result type: ${result.runtimeType}');
 
       int count = 0;
+
       if (result is List) {
         count = result.length;
         debugPrint('🔍 List length (count): $count');
+
         if (count > 0) {
           debugPrint('🔍 First few rows: ${result.take(3)}');
         }
@@ -280,7 +278,6 @@ class _MainDashboardState extends State<MainDashboard> {
         _santaHighSchoolCount = count;
       });
 
-      // Check if capacity is full
       if (_santaHighSchoolCount >= 120) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _showCapacityFullDialog("Santa High School (Supplemental)");
@@ -306,9 +303,11 @@ class _MainDashboardState extends State<MainDashboard> {
       debugPrint('🔍 Result type: ${result.runtimeType}');
 
       int count = 0;
+
       if (result is List) {
         count = result.length;
         debugPrint('🔍 List length (count): $count');
+
         if (count > 0) {
           debugPrint('🔍 First few rows: ${result.take(3)}');
         }
@@ -320,7 +319,6 @@ class _MainDashboardState extends State<MainDashboard> {
         _santaNationalHighSchoolCount = count;
       });
 
-      // Check if capacity is full
       if (_santaNationalHighSchoolCount >= 100) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _showCapacityFullDialog("Santa National High School (Supplemental)");
@@ -351,6 +349,7 @@ class _MainDashboardState extends State<MainDashboard> {
         count = result.length;
       } else if (result is Map) {
         final data = result['data'];
+
         if (data is List) {
           count = data.length;
         } else if (result.containsKey('count') && result['count'] is int) {
@@ -373,6 +372,7 @@ class _MainDashboardState extends State<MainDashboard> {
       });
     } catch (e) {
       debugPrint('❌ Error fetching registered residents: $e');
+
       setState(() {
         _registeredResidents = 0;
         _isLoading = false;
@@ -396,17 +396,23 @@ class _MainDashboardState extends State<MainDashboard> {
           .select('FamilyMember_ID')
           .timeout(const Duration(seconds: 10));
 
-      int _safeCount(dynamic result) {
+      int safeCount(dynamic result) {
         if (result == null) return 0;
+
         if (result is List) return result.length;
+
         if (result is Map) {
           final data = result['data'];
+
           if (data is List) return data.length;
+
           if (result.containsKey('count') && result['count'] is int) {
             return result['count'] as int;
           }
         }
+
         if (result is Iterable) return result.length;
+
         try {
           return (result as List<dynamic>).length;
         } catch (_) {
@@ -414,8 +420,8 @@ class _MainDashboardState extends State<MainDashboard> {
         }
       }
 
-      final countA = _safeCount(evacAResult);
-      final countB = _safeCount(evacBResult);
+      final countA = safeCount(evacAResult);
+      final countB = safeCount(evacBResult);
 
       setState(() {
         _evacuatedResidents = countA + countB;
@@ -423,6 +429,7 @@ class _MainDashboardState extends State<MainDashboard> {
       });
     } catch (e) {
       debugPrint('❌ Error fetching evacuated residents: $e');
+
       setState(() {
         _evacuatedResidents = 0;
         _isLoading = false;
@@ -443,52 +450,75 @@ class _MainDashboardState extends State<MainDashboard> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
-    final orientation = MediaQuery.of(context).orientation;
     final width = size.width;
 
-    int crossAxisCount = 2;
-    double childAspectRatio = 1.1;
-    if (orientation == Orientation.landscape) {
-      crossAxisCount = width > 900 ? 5 : (width > 600 ? 4 : 3);
-      childAspectRatio = 1.0;
+    int crossAxisCount = (width / 320).floor();
+
+    if (crossAxisCount < 1) crossAxisCount = 1;
+    if (crossAxisCount > 6) crossAxisCount = 6;
+
+    double targetCardHeight;
+
+    if (width >= 1800) {
+      targetCardHeight = 220;
+    } else if (width >= 1400) {
+      targetCardHeight = 200;
+    } else if (width >= 1000) {
+      targetCardHeight = 180;
+    } else if (width >= 800) {
+      targetCardHeight = 170;
+    } else if (width >= 600) {
+      targetCardHeight = 160;
     } else {
-      crossAxisCount = width > 600 ? 3 : 2;
-      childAspectRatio = width > 600 ? 1.2 : 1.1;
+      targetCardHeight = 150;
     }
 
-    double titleFontSize = (orientation == Orientation.landscape || width > 600)
-        ? 20
-        : 18;
-    double sectionTitleFontSize =
-        (orientation == Orientation.landscape || width > 600) ? 17 : 15;
-    double cardTitleFontSize =
-        (orientation == Orientation.landscape || width > 600) ? 12 : 11;
-    double cardNumberFontSize =
-        (orientation == Orientation.landscape || width > 600) ? 24 : 20;
-    double cardCapacityFontSize =
-        (orientation == Orientation.landscape || width > 600) ? 11 : 10;
-    double actionTitleFontSize =
-        (orientation == Orientation.landscape || width > 600) ? 15 : 14;
-    double actionSubtitleFontSize =
-        (orientation == Orientation.landscape || width > 600) ? 11.5 : 10.5;
+    final double columnWidth =
+        (width - (crossAxisCount - 1) * 16) / crossAxisCount;
 
-    EdgeInsets bodyPadding =
-        (orientation == Orientation.landscape || width > 600)
-        ? const EdgeInsets.all(16).copyWith(bottom: 24)
-        : const EdgeInsets.all(10).copyWith(bottom: 16);
-    double actionCardHeight =
-        (orientation == Orientation.landscape || width > 600) ? 100 : 80;
+    final double childAspectRatio = columnWidth / targetCardHeight;
+
+    final double crossAxisSpacing = width >= 1400
+        ? 20
+        : width >= 1000
+        ? 16
+        : 12;
+
+    final double mainAxisSpacing = width >= 1400
+        ? 20
+        : width >= 1000
+        ? 16
+        : 12;
+
+    EdgeInsets bodyPadding;
+
+    if (width > 1600) {
+      bodyPadding = EdgeInsets.symmetric(
+        horizontal: width * 0.03,
+        vertical: 28,
+      );
+    } else if (width > 1200) {
+      bodyPadding = const EdgeInsets.all(32);
+    } else if (width > 1000) {
+      bodyPadding = const EdgeInsets.all(28);
+    } else if (width > 800) {
+      bodyPadding = const EdgeInsets.all(24);
+    } else if (width > 600) {
+      bodyPadding = const EdgeInsets.all(20);
+    } else {
+      bodyPadding = const EdgeInsets.all(16);
+    }
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Colors.grey[100],
       drawer: _buildAdminDrawer(),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0D743D),
+        backgroundColor: primaryGreen,
         centerTitle: true,
         title: Text(
           'MSWDO Dashboard',
           style: GoogleFonts.poppins(
-            fontSize: titleFontSize,
+            fontSize: width > 600 ? 24 : 20,
             fontWeight: FontWeight.w600,
             color: Colors.white,
           ),
@@ -500,185 +530,111 @@ class _MainDashboardState extends State<MainDashboard> {
           ),
         ),
       ),
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return RefreshIndicator(
-              onRefresh: _refreshData,
-              child: SingleChildScrollView(
-                padding: bodyPadding,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Dashboard Overview",
-                        style: GoogleFonts.poppins(
-                          fontSize: sectionTitleFontSize,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      GridView.count(
-                        physics: const NeverScrollableScrollPhysics(),
-                        shrinkWrap: true,
-                        crossAxisCount: crossAxisCount,
-                        crossAxisSpacing: 10,
-                        mainAxisSpacing: 10,
-                        childAspectRatio: childAspectRatio,
-                        children: [
-                          _evacCard(
-                            "Registered Residents",
-                            _registeredResidents,
-                            null,
-                            cardTitleFontSize,
-                            cardNumberFontSize,
-                            cardCapacityFontSize,
-                          ),
-                          _evacCard(
-                            "Evacuated Residents",
-                            _isLoading ? 0 : _evacuatedResidents,
-                            null,
-                            cardTitleFontSize,
-                            cardNumberFontSize,
-                            cardCapacityFontSize,
-                          ),
-                          _evacCard(
-                            "Municipal Evacuation Center - Magsaysay",
-                            _magsaysayCount,
-                            250,
-                            cardTitleFontSize,
-                            cardNumberFontSize,
-                            cardCapacityFontSize,
-                          ),
-                          _evacCard(
-                            "Municipal Farmer’s Covered Court",
-                            _farmersCourtCount,
-                            200,
-                            cardTitleFontSize,
-                            cardNumberFontSize,
-                            cardCapacityFontSize,
-                          ),
-                          _evacCard(
-                            "Santa RHU",
-                            _santaRhuCount,
-                            150,
-                            cardTitleFontSize,
-                            cardNumberFontSize,
-                            cardCapacityFontSize,
-                          ),
-                          _evacCard(
-                            "Santa High School (Supplemental)",
-                            _santaHighSchoolCount,
-                            120,
-                            cardTitleFontSize,
-                            cardNumberFontSize,
-                            cardCapacityFontSize,
-                          ),
-                          _evacCard(
-                            "Santa National High School (Supplemental)",
-                            _santaNationalHighSchoolCount,
-                            100,
-                            cardTitleFontSize,
-                            cardNumberFontSize,
-                            cardCapacityFontSize,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      const Divider(thickness: 1),
-                      const SizedBox(height: 8),
-                      Text(
-                        "Quick Access",
-                        style: GoogleFonts.poppins(
-                          fontSize: sectionTitleFontSize,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      _actionCard(
-                        title: "QR Scanning",
-                        subtitle: "Scan residents’ QR codes quickly",
-                        icon: Icons.qr_code_scanner,
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const ScanQrPage(),
-                            ),
-                          );
-                        },
-                        titleFontSize: actionTitleFontSize,
-                        subtitleFontSize: actionSubtitleFontSize,
-                        height: actionCardHeight,
-                      ),
-                      const SizedBox(height: 12),
-                      _actionCard(
-                        title: "Applications",
-                        subtitle: "View and manage resident applications",
-                        icon: Icons.article_outlined,
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const RegistrationPage(),
-                            ),
-                          );
-                        },
-                        titleFontSize: actionTitleFontSize,
-                        subtitleFontSize: actionSubtitleFontSize,
-                        height: actionCardHeight,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  // 🧭 Drawer
-  Widget _buildAdminDrawer() {
-    return Drawer(
-      child: SafeArea(
+      body: RefreshIndicator(
+        color: primaryGreen,
+        onRefresh: _refreshData,
         child: SingleChildScrollView(
+          padding: bodyPadding,
+          physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              DrawerHeader(
-                decoration: const BoxDecoration(color: Color(0xFF0D743D)),
-                child: Align(
-                  alignment: Alignment.bottomLeft,
-                  child: Text(
-                    'Admin Dashboard',
-                    style: GoogleFonts.poppins(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
+              Text(
+                "Dashboard Overview",
+                style: GoogleFonts.poppins(
+                  fontSize: width > 600 ? 22 : 18,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
                 ),
               ),
-
-              // Drawer items
-              _buildDrawerItem('Dashboard', Icons.dashboard_outlined),
-              _buildDrawerItem(
-                'Resident Management',
-                Icons.people_alt_outlined,
+              const SizedBox(height: 18),
+              GridView.count(
+                physics: const NeverScrollableScrollPhysics(),
+                shrinkWrap: true,
+                crossAxisCount: crossAxisCount,
+                crossAxisSpacing: crossAxisSpacing,
+                mainAxisSpacing: mainAxisSpacing,
+                childAspectRatio: childAspectRatio,
+                children: [
+                  _evacuationCenterCard(
+                    "Registered Residents",
+                    _registeredResidents,
+                    null,
+                  ),
+                  _evacuationCenterCard(
+                    "Evacuated Residents",
+                    _isLoading ? 0 : _evacuatedResidents,
+                    null,
+                  ),
+                  _evacuationCenterCard(
+                    "Municipal Evacuation Center, Magsaysay",
+                    _magsaysayCount,
+                    250,
+                  ),
+                  _evacuationCenterCard(
+                    "Municipal Farmer’s Covered Court",
+                    _farmersCourtCount,
+                    200,
+                  ),
+                  _evacuationCenterCard("Santa RHU", _santaRhuCount, 150),
+                  _evacuationCenterCard(
+                    "Santa High School (Supplemental)",
+                    _santaHighSchoolCount,
+                    120,
+                  ),
+                  _evacuationCenterCard(
+                    "Santa National High School (Supplemental)",
+                    _santaNationalHighSchoolCount,
+                    100,
+                  ),
+                ],
               ),
-              _buildDrawerItem('QR Code Management', Icons.qr_code_2),
-              _buildDrawerItem(
-                'Discharge Residents',
-                Icons.exit_to_app_rounded,
+              const SizedBox(height: 28),
+              const Divider(thickness: 1.2),
+              const SizedBox(height: 16),
+              Text(
+                "Quick Access",
+                style: GoogleFonts.poppins(
+                  fontSize: width > 600 ? 20 : 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
               ),
-
-              const Divider(),
-
-              _buildDrawerItem('Reports', Icons.analytics_outlined),
-              _buildDrawerItem('Requests', Icons.pending_actions_outlined),
+              const SizedBox(height: 14),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _actionCard(
+                    title: "QR Scanning",
+                    subtitle: "Scan residents’ QR codes quickly",
+                    icon: Icons.qr_code_scanner,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const ScanQrPage(),
+                        ),
+                      );
+                    },
+                    fullWidth: true,
+                  ),
+                  const SizedBox(height: 16),
+                  _actionCard(
+                    title: "Applications",
+                    subtitle: "View and manage resident applications",
+                    icon: Icons.article_outlined,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const RegistrationPage(),
+                        ),
+                      );
+                    },
+                    fullWidth: true,
+                  ),
+                ],
+              ),
             ],
           ),
         ),
@@ -686,91 +642,171 @@ class _MainDashboardState extends State<MainDashboard> {
     );
   }
 
-  // 🔹 Drawer Item Widget with if-else navigation logic
-  Widget _buildDrawerItem(String title, IconData icon) {
-    final bool isSelected = selectedPage == title;
-
-    return ListTile(
-      leading: Icon(
-        icon,
-        color: isSelected ? const Color(0xFF0D743D) : Colors.black54,
-      ),
-      tileColor: isSelected ? const Color(0xFF0D743D).withOpacity(0.1) : null,
-      title: Text(
-        title,
-        style: GoogleFonts.poppins(
-          fontSize: 16,
-          fontWeight: FontWeight.w500,
-          color: isSelected ? const Color(0xFF0D743D) : Colors.black,
+  Widget _buildAdminDrawer() {
+    return Drawer(
+      backgroundColor: Colors.white,
+      child: SafeArea(
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [primaryGreen, darkGreen],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const CircleAvatar(
+                    radius: 28,
+                    backgroundColor: Colors.white24,
+                    child: Icon(
+                      Icons.admin_panel_settings_rounded,
+                      color: Colors.white,
+                      size: 30,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Admin Dashboard',
+                    style: GoogleFonts.poppins(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Evacuation Management System',
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      color: Colors.white.withOpacity(0.90),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Column(
+                  children: [
+                    _buildDrawerItem('Dashboard', Icons.dashboard_outlined),
+                    _buildDrawerItem(
+                      'Resident Management',
+                      Icons.people_alt_outlined,
+                    ),
+                    _buildDrawerItem('QR Code Management', Icons.qr_code_2),
+                    _buildDrawerItem(
+                      'Discharge Residents',
+                      Icons.exit_to_app_rounded,
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 10,
+                      ),
+                      child: Divider(color: Colors.grey.shade300),
+                    ),
+                    _buildDrawerItem('Reports', Icons.analytics_outlined),
+                    _buildDrawerItem(
+                      'Requests',
+                      Icons.pending_actions_outlined,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
-      onTap: () {
-        setState(() {
-          selectedPage = title;
-        });
-
-        Navigator.pop(context);
-
-        // 🧭 Navigation logic
-        if (title == 'Dashboard') {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const MainDashboard()),
-          );
-        } else if (title == 'Resident Management') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const ManageResidentsPage(),
-            ),
-          );
-        } else if (title == 'QR Code Management') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const DisplayAllQrPage()),
-          );
-        } else if (title == 'Discharge Residents') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const DischargeScanQrPage(),
-            ),
-          );
-        } else if (title == 'Reports') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const WebReportsPage()),
-          );
-        } else if (title == 'Requests') {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const AppRequestsPage()),
-          );
-        }
-      },
     );
   }
 
-  Widget _evacCard(
-    String title,
-    int current,
-    int? capacity,
-    double titleFontSize,
-    double numberFontSize,
-    double capacityFontSize,
-  ) {
-    const Color mainGreen = Color(0xFF0D743D); // Always use this green
+  Widget _buildDrawerItem(String title, IconData icon) {
+    final bool isSelected = selectedPage == title;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Material(
+        color: isSelected ? primaryGreen.withOpacity(0.10) : Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: ListTile(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          leading: Icon(
+            icon,
+            color: isSelected ? primaryGreen : Colors.black54,
+          ),
+          title: Text(
+            title,
+            style: GoogleFonts.poppins(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              color: isSelected ? primaryGreen : Colors.black87,
+            ),
+          ),
+          onTap: () {
+            setState(() => selectedPage = title);
+            Navigator.pop(context);
+
+            if (title == 'Dashboard') {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const MainDashboard()),
+              );
+            } else if (title == 'Resident Management') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ManageResidentsPage()),
+              );
+            } else if (title == 'QR Code Management') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const DisplayAllQrPage()),
+              );
+            } else if (title == 'Discharge Residents') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const DischargeScanQrPage()),
+              );
+            } else if (title == 'Reports') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AppReportsPage()),
+              );
+            } else if (title == 'Requests') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AppRequestsPage()),
+              );
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _evacuationCenterCard(String title, int current, int? capacity) {
+    final bool hasCapacity = capacity != null;
+    final int remaining = hasCapacity ? (capacity - current) : 0;
 
     return Container(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border(top: BorderSide(color: mainGreen, width: 4)),
+        border: Border(top: BorderSide(color: primaryGreen, width: 4)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black12,
-            blurRadius: 5,
+            color: Colors.grey.withOpacity(0.15),
+            blurRadius: 8,
+            spreadRadius: 1,
             offset: const Offset(0, 3),
           ),
         ],
@@ -781,8 +817,10 @@ class _MainDashboardState extends State<MainDashboard> {
         children: [
           Text(
             title,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
             style: GoogleFonts.poppins(
-              fontSize: titleFontSize,
+              fontSize: 13,
               fontWeight: FontWeight.w600,
               color: Colors.black87,
             ),
@@ -791,26 +829,20 @@ class _MainDashboardState extends State<MainDashboard> {
           Text(
             "$current",
             style: GoogleFonts.poppins(
-              fontSize: numberFontSize,
+              fontSize: 24,
               fontWeight: FontWeight.bold,
-              color: mainGreen,
+              color: primaryGreen,
             ),
           ),
-          if (capacity != null) ...[
+          if (hasCapacity) ...[
             const SizedBox(height: 4),
             Text(
               "Capacity: $capacity",
-              style: GoogleFonts.poppins(
-                fontSize: capacityFontSize,
-                color: Colors.black54,
-              ),
+              style: GoogleFonts.poppins(fontSize: 12, color: Colors.black87),
             ),
             Text(
-              "Remaining: ${capacity - current}",
-              style: GoogleFonts.poppins(
-                fontSize: capacityFontSize,
-                color: Colors.black54,
-              ),
+              "Remaining: $remaining",
+              style: GoogleFonts.poppins(fontSize: 12, color: Colors.black54),
             ),
           ],
         ],
@@ -823,55 +855,60 @@ class _MainDashboardState extends State<MainDashboard> {
     required String subtitle,
     required IconData icon,
     required VoidCallback onTap,
-    required double titleFontSize,
-    required double subtitleFontSize,
-    required double height,
+    bool fullWidth = false,
   }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: height,
+        width: fullWidth ? double.infinity : null,
+        height: 110,
         decoration: BoxDecoration(
           gradient: const LinearGradient(
             colors: [Color(0xFF0D743D), Color(0xFF1D9A58)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black12,
-              blurRadius: 5,
-              offset: const Offset(0, 3),
+              color: Colors.grey.withOpacity(0.25),
+              spreadRadius: 2,
+              blurRadius: 6,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
           children: [
-            CircleAvatar(
-              radius: 22,
-              backgroundColor: Colors.white,
-              child: Icon(icon, color: const Color(0xFF0D743D), size: 24),
+            Container(
+              height: 50,
+              width: 50,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: primaryGreen, size: 28),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 16),
             Expanded(
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
                     title,
                     style: GoogleFonts.poppins(
-                      fontSize: titleFontSize,
-                      color: Colors.white,
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
+                      color: Colors.white,
                     ),
                   ),
+                  const SizedBox(height: 4),
                   Text(
                     subtitle,
                     style: GoogleFonts.poppins(
-                      fontSize: subtitleFontSize,
+                      fontSize: 12,
                       color: Colors.white70,
                     ),
                   ),
@@ -881,7 +918,7 @@ class _MainDashboardState extends State<MainDashboard> {
             const Icon(
               Icons.arrow_forward_ios,
               color: Colors.white70,
-              size: 16,
+              size: 18,
             ),
           ],
         ),

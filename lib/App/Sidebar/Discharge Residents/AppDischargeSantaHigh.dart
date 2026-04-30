@@ -5,18 +5,19 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-class AppFarmersResidentsPage extends StatefulWidget {
-  const AppFarmersResidentsPage({super.key});
+class AppSantaHighSchoolResidentsPage extends StatefulWidget {
+  const AppSantaHighSchoolResidentsPage({super.key});
 
   @override
-  State<AppFarmersResidentsPage> createState() =>
-      _AppFarmersResidentsPageState();
+  State<AppSantaHighSchoolResidentsPage> createState() =>
+      _AppSantaHighSchoolResidentsPageState();
 }
 
-class _AppFarmersResidentsPageState extends State<AppFarmersResidentsPage> {
-  static const String currentSiteName = 'Municipal Farmers Covered Court';
+class _AppSantaHighSchoolResidentsPageState
+    extends State<AppSantaHighSchoolResidentsPage> {
+  static const String currentSiteName = 'Santa High School';
 
-  final supabase = Supabase.instance.client;
+  final SupabaseClient supabase = Supabase.instance.client;
 
   List<Map<String, dynamic>> residents = [];
   bool isLoading = true;
@@ -59,19 +60,19 @@ class _AppFarmersResidentsPageState extends State<AppFarmersResidentsPage> {
     });
 
     try {
-      final evacA = await supabase
+      final evacAResponse = await supabase
           .from('Evacuation_A')
           .select()
           .eq('Site', currentSiteName);
 
-      final evacB = await supabase
+      final evacBResponse = await supabase
           .from('Evacuation_B')
           .select()
           .eq('Site', currentSiteName);
 
       final combined = [
-        ...List<Map<String, dynamic>>.from(evacA),
-        ...List<Map<String, dynamic>>.from(evacB),
+        ...List<Map<String, dynamic>>.from(evacAResponse),
+        ...List<Map<String, dynamic>>.from(evacBResponse),
       ];
 
       final Map<String, Map<String, dynamic>> headMap = {};
@@ -112,7 +113,10 @@ class _AppFarmersResidentsPageState extends State<AppFarmersResidentsPage> {
       });
 
       for (final entry in headMap.entries) {
-        _fetchRegistrationDetails(entry.value['UID'].toString(), entry.key);
+        final uid = entry.value['UID']?.toString() ?? '';
+        if (uid.isNotEmpty) {
+          _fetchRegistrationDetails(uid, entry.key);
+        }
       }
     } catch (e, st) {
       debugPrint('❌ Error fetching residents: $e');
@@ -149,10 +153,12 @@ class _AppFarmersResidentsPageState extends State<AppFarmersResidentsPage> {
       if (!mounted) return;
 
       if (registrationResponse != null) {
-        registrationDetailsCache[regId] = {
-          'registration': registrationResponse,
-          'family': familyResponse,
-        };
+        _safeSetState(() {
+          registrationDetailsCache[regId] = {
+            'registration': registrationResponse,
+            'family': familyResponse,
+          };
+        });
       }
     } catch (e) {
       debugPrint('❌ Error fetching registration details for $regId: $e');
@@ -162,16 +168,12 @@ class _AppFarmersResidentsPageState extends State<AppFarmersResidentsPage> {
   // ================= SELECTION HANDLERS =================
 
   void _toggle(int index) {
-    if (!mounted) return;
-
     _safeSetState(() {
       expanded[index] = !(expanded[index] ?? false);
     });
   }
 
   void _toggleSelect(int index) {
-    if (!mounted) return;
-
     _safeSetState(() {
       selected[index] = !(selected[index] ?? false);
 
@@ -185,7 +187,7 @@ class _AppFarmersResidentsPageState extends State<AppFarmersResidentsPage> {
   }
 
   void _toggleSelectAll() {
-    if (!mounted || residents.isEmpty) return;
+    if (residents.isEmpty) return;
 
     _safeSetState(() {
       allSelected = !allSelected;
@@ -264,8 +266,10 @@ class _AppFarmersResidentsPageState extends State<AppFarmersResidentsPage> {
     final Map<String, List<String>> splitMap = {};
 
     for (final resident in selectedResidents) {
-      final uid = resident['UID'].toString();
+      final uid = resident['UID']?.toString() ?? '';
       final familyName = (resident['Family_Member'] ?? 'Resident').toString();
+
+      if (uid.isEmpty) continue;
 
       try {
         final allRows = await _fetchAllEvacRowsByUid(uid);
@@ -285,6 +289,49 @@ class _AppFarmersResidentsPageState extends State<AppFarmersResidentsPage> {
     }
 
     return splitMap;
+  }
+
+  String _formatDateTime(DateTime dateTime) {
+    final List<String> months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+
+    final month = months[dateTime.month - 1];
+    final day = dateTime.day;
+    final year = dateTime.year;
+
+    final hour12 = dateTime.hour % 12 == 0 ? 12 : dateTime.hour % 12;
+    final minute = dateTime.minute.toString().padLeft(2, '0');
+    final period = dateTime.hour >= 12 ? 'PM' : 'AM';
+
+    return '$month $day, $year | $hour12:$minute $period';
+  }
+
+  bool _toBool(dynamic value) {
+    if (value is bool) return value;
+    if (value is int) return value == 1;
+
+    if (value is String) {
+      final v = value.trim().toLowerCase();
+      return v == 'true' || v == '1' || v == 'yes';
+    }
+
+    return false;
+  }
+
+  String _normalizeName(String value) {
+    return value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
   }
 
   // ================= DIALOGS =================
@@ -871,54 +918,9 @@ class _AppFarmersResidentsPageState extends State<AppFarmersResidentsPage> {
 
     final nowDateTime = DateTime.now();
     final now = nowDateTime.toIso8601String();
-
-    String formatDateTime(DateTime dateTime) {
-      final List<String> months = [
-        'January',
-        'February',
-        'March',
-        'April',
-        'May',
-        'June',
-        'July',
-        'August',
-        'September',
-        'October',
-        'November',
-        'December',
-      ];
-
-      final month = months[dateTime.month - 1];
-      final day = dateTime.day;
-      final year = dateTime.year;
-
-      final hour12 = dateTime.hour % 12 == 0 ? 12 : dateTime.hour % 12;
-      final minute = dateTime.minute.toString().padLeft(2, '0');
-      final period = dateTime.hour >= 12 ? 'PM' : 'AM';
-
-      return '$month $day, $year | $hour12:$minute $period';
-    }
-
-    final formattedTimeDischarge = formatDateTime(nowDateTime);
-
-    bool toBool(dynamic value) {
-      if (value is bool) return value;
-      if (value is int) return value == 1;
-
-      if (value is String) {
-        final v = value.trim().toLowerCase();
-        return v == 'true' || v == '1' || v == 'yes';
-      }
-
-      return false;
-    }
-
-    String normalizeName(String value) {
-      return value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
-    }
+    final formattedTimeDischarge = _formatDateTime(nowDateTime);
 
     List<Map<String, dynamic>> currentSiteRows = [];
-    List<Map<String, dynamic>> allRows = [];
 
     try {
       final evacAAll = await supabase
@@ -931,7 +933,7 @@ class _AppFarmersResidentsPageState extends State<AppFarmersResidentsPage> {
           .select('*')
           .eq('UID', uid);
 
-      allRows = [
+      final allRows = [
         ...List<Map<String, dynamic>>.from(evacAAll),
         ...List<Map<String, dynamic>>.from(evacBAll),
       ];
@@ -984,7 +986,7 @@ class _AppFarmersResidentsPageState extends State<AppFarmersResidentsPage> {
 
     final dynamic rawA = evacAHead?['4Ps_Families'];
     final dynamic rawB = evacBHead?['4Ps_Families'];
-    final bool fourPsFamilies = toBool(rawA) || toBool(rawB);
+    final bool fourPsFamilies = _toBool(rawA) || _toBool(rawB);
 
     Map<String, dynamic>? registrationData;
     List<Map<String, dynamic>> familyMembers = [];
@@ -1027,7 +1029,7 @@ class _AppFarmersResidentsPageState extends State<AppFarmersResidentsPage> {
       final memberName = (member['Family_Member'] ?? '').toString().trim();
 
       if (memberName.isNotEmpty) {
-        familyMemberByName[normalizeName(memberName)] = member;
+        familyMemberByName[_normalizeName(memberName)] = member;
       }
     }
 
@@ -1036,7 +1038,7 @@ class _AppFarmersResidentsPageState extends State<AppFarmersResidentsPage> {
     for (final row in currentSiteRows) {
       final relation = (row['Relation'] ?? '').toString();
       final memberName = (row['Family_Member'] ?? '').toString().trim();
-      final matchedFamilyData = familyMemberByName[normalizeName(memberName)];
+      final matchedFamilyData = familyMemberByName[_normalizeName(memberName)];
 
       if (relation == 'Head of Family') {
         dischargeInserts.add({
@@ -1100,7 +1102,9 @@ class _AppFarmersResidentsPageState extends State<AppFarmersResidentsPage> {
     }
 
     try {
-      await supabase.from('Discharge_Resident').insert(dischargeInserts);
+      if (dischargeInserts.isNotEmpty) {
+        await supabase.from('Discharge_Resident').insert(dischargeInserts);
+      }
 
       await supabase
           .from('Evacuation_A')
@@ -1186,7 +1190,7 @@ class _AppFarmersResidentsPageState extends State<AppFarmersResidentsPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Farmers Covered Court',
+                        'Santa High School',
                         style: GoogleFonts.poppins(
                           color: Colors.white,
                           fontSize: 18,
@@ -1304,7 +1308,6 @@ class _AppFarmersResidentsPageState extends State<AppFarmersResidentsPage> {
     bool isExpanded,
     bool isSelected,
     int index,
-    bool isWide,
   ) {
     final displayName = (r['Family_Member'] ?? 'N/A').toString();
     final ageText = (r['Age'] ?? 'N/A').toString();
@@ -1557,7 +1560,7 @@ class _AppFarmersResidentsPageState extends State<AppFarmersResidentsPage> {
           onPressed: _isDischarging ? null : () => Navigator.of(context).pop(),
         ),
         title: Text(
-          "Farmers Covered Court Residents",
+          "Santa High School Residents",
           style: GoogleFonts.poppins(
             fontWeight: FontWeight.bold,
             color: Colors.white,
@@ -1614,10 +1617,8 @@ class _AppFarmersResidentsPageState extends State<AppFarmersResidentsPage> {
           Padding(
             padding: const EdgeInsets.all(14),
             child: isLoading
-                ? Center(
-                    child: CircularProgressIndicator(
-                      color: const Color(0xFF0D743D),
-                    ),
+                ? const Center(
+                    child: CircularProgressIndicator(color: Color(0xFF0D743D)),
                   )
                 : Column(
                     children: [
@@ -1625,8 +1626,6 @@ class _AppFarmersResidentsPageState extends State<AppFarmersResidentsPage> {
                       Expanded(
                         child: LayoutBuilder(
                           builder: (context, constraints) {
-                            final isWide = constraints.maxWidth > 900;
-
                             if (residents.isEmpty) {
                               return Center(
                                 child: Container(
@@ -1702,7 +1701,6 @@ class _AppFarmersResidentsPageState extends State<AppFarmersResidentsPage> {
                                     isExpanded,
                                     isSelected,
                                     index,
-                                    isWide,
                                   );
                                 },
                               ),
