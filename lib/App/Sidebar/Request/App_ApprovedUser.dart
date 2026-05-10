@@ -42,6 +42,10 @@ class _App_ApprovedUserQRPageState extends State<App_ApprovedUserQRPage> {
   final Color cardBorder = const Color(0xFFE3EAE6);
 
   String qrData = '';
+  String qrRawValue = '';
+  String qrSourceLabel = '';
+  Uint8List? qrImageBytes;
+
   bool isLoading = true;
   bool isSendingEmail = false;
 
@@ -69,6 +73,10 @@ class _App_ApprovedUserQRPageState extends State<App_ApprovedUserQRPage> {
     return id;
   }
 
+  bool get hasQrContent {
+    return qrImageBytes != null || qrData.trim().isNotEmpty;
+  }
+
   String get safeFileName {
     final name = fullName
         .replaceAll(RegExp(r'[^a-zA-Z0-9\s_-]'), '')
@@ -78,36 +86,142 @@ class _App_ApprovedUserQRPageState extends State<App_ApprovedUserQRPage> {
     return name.isEmpty ? 'Resident_QR_ID.pdf' : '${name}_QR_ID.pdf';
   }
 
+  bool get isValidEmail {
+    final emailRegex = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
+    return emailRegex.hasMatch(cleanEmail);
+  }
+
+  String _readFunctionMessage(dynamic data) {
+    try {
+      if (data is Map) {
+        final message = data['message']?.toString();
+        final error = data['error']?.toString();
+        final details = data['details'];
+
+        if (message != null && message.trim().isNotEmpty) return message;
+        if (error != null && error.trim().isNotEmpty) return error;
+        if (details != null) return details.toString();
+      }
+
+      return data?.toString() ?? 'Unknown email sending error.';
+    } catch (_) {
+      return 'Unknown email sending error.';
+    }
+  }
+
+  bool _isImageBytes(Uint8List bytes) {
+    if (bytes.length < 12) return false;
+
+    final isPng =
+        bytes[0] == 0x89 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x4E &&
+        bytes[3] == 0x47;
+
+    final isJpg = bytes[0] == 0xFF && bytes[1] == 0xD8;
+
+    final isGif = bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46;
+
+    final isWebp =
+        bytes[0] == 0x52 &&
+        bytes[1] == 0x49 &&
+        bytes[2] == 0x46 &&
+        bytes[3] == 0x46 &&
+        bytes[8] == 0x57 &&
+        bytes[9] == 0x45 &&
+        bytes[10] == 0x42 &&
+        bytes[11] == 0x50;
+
+    return isPng || isJpg || isGif || isWebp;
+  }
+
+  Uint8List? _tryDecodeBase64Image(String value) {
+    try {
+      String cleaned = value.trim();
+
+      if (cleaned.startsWith('data:image')) {
+        final commaIndex = cleaned.indexOf(',');
+        if (commaIndex != -1) {
+          cleaned = cleaned.substring(commaIndex + 1);
+        }
+      }
+
+      cleaned = cleaned.replaceAll(RegExp(r'\s+'), '');
+
+      if (cleaned.isEmpty) return null;
+
+      final remainder = cleaned.length % 4;
+      if (remainder > 0) {
+        cleaned = cleaned.padRight(cleaned.length + (4 - remainder), '=');
+      }
+
+      final bytes = base64Decode(cleaned);
+
+      if (_isImageBytes(bytes)) {
+        return bytes;
+      }
+
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _fetchQrData() async {
     if (!mounted) return;
 
-    setState(() => isLoading = true);
+    setState(() {
+      isLoading = true;
+      qrData = '';
+      qrRawValue = '';
+      qrImageBytes = null;
+      qrSourceLabel = '';
+    });
 
     try {
       final response = await supabase
           .from('Registration_Table')
-          .select()
+          .select('Registration_ID, QR_Code')
           .eq('Registration_ID', widget.registrationId)
           .single();
 
-      if (!mounted) return;
+      final qrCodeFromDb = response['QR_Code']?.toString().trim() ?? '';
 
-      if (response != null) {
-        /*
-          Current QR value:
-          Registration_ID is used as the QR content.
+      if (qrCodeFromDb.isEmpty) {
+        throw Exception(
+          'QR_Code is empty for Registration ID: ${widget.registrationId}',
+        );
+      }
 
-          If your QR_Code column stores the actual QR value, use this instead:
-          qrData = response['QR_Code']?.toString() ?? widget.registrationId;
-        */
-        qrData = widget.registrationId;
+      qrRawValue = qrCodeFromDb;
+
+      final decodedImage = _tryDecodeBase64Image(qrCodeFromDb);
+
+      if (decodedImage != null) {
+        qrImageBytes = decodedImage;
+        qrData = '';
+        qrSourceLabel = 'Registration_Table → QR_Code image';
+      } else {
+        if (qrCodeFromDb.length > 2500) {
+          throw Exception(
+            'QR_Code is too long to generate as text QR and is not a valid Base64 image. Please check if QR_Code stores a valid QR image or a short QR value.',
+          );
+        }
+
+        qrData = qrCodeFromDb;
+        qrImageBytes = null;
+        qrSourceLabel = 'Registration_Table → QR_Code text';
       }
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to fetch QR: $e')));
+      await _showInfoDialog(
+        icon: Icons.error_outline_rounded,
+        iconColor: Colors.red.shade600,
+        title: 'QR_Code Not Found',
+        message:
+            'The system cannot load the QR_Code value for this resident.\n\nError: $e',
+      );
     } finally {
       if (mounted) {
         setState(() => isLoading = false);
@@ -128,13 +242,21 @@ class _App_ApprovedUserQRPageState extends State<App_ApprovedUserQRPage> {
     return picData!.buffer.asUint8List();
   }
 
-  Future<Uint8List> _generatePdfBytes() async {
-    if (qrData.trim().isEmpty) {
-      throw Exception('No QR data available.');
+  Future<Uint8List> _getQrImageForPdf() async {
+    if (qrImageBytes != null) {
+      return qrImageBytes!;
     }
 
+    if (qrData.trim().isNotEmpty) {
+      return _generateQrBytes(qrData, size: 170);
+    }
+
+    throw Exception('No QR_Code data available.');
+  }
+
+  Future<Uint8List> _generatePdfBytes() async {
     final pdf = pw.Document();
-    final qrBytes = await _generateQrBytes(qrData, size: 170);
+    final qrBytes = await _getQrImageForPdf();
 
     pdf.addPage(
       pw.Page(
@@ -324,12 +446,24 @@ class _App_ApprovedUserQRPageState extends State<App_ApprovedUserQRPage> {
       return;
     }
 
-    if (qrData.trim().isEmpty) {
+    if (!isValidEmail) {
       await _showInfoDialog(
         icon: Icons.error_outline_rounded,
         iconColor: Colors.red.shade600,
-        title: 'No QR Available',
-        message: 'No QR code is available to send.',
+        title: 'Invalid Email Address',
+        message:
+            'The resident email address is not valid:\n\n$cleanEmail\n\nPlease ask the resident to submit a correct email address.',
+      );
+      return;
+    }
+
+    if (!hasQrContent) {
+      await _showInfoDialog(
+        icon: Icons.error_outline_rounded,
+        iconColor: Colors.red.shade600,
+        title: 'No QR_Code Available',
+        message:
+            'No QR_Code value is available from the Registration_Table. Please check the QR_Code column for this resident.',
       );
       return;
     }
@@ -343,7 +477,6 @@ class _App_ApprovedUserQRPageState extends State<App_ApprovedUserQRPage> {
 
     try {
       final pdfBytes = await _generatePdfBytes();
-
       final pdfBase64 = base64Encode(pdfBytes);
 
       final response = await supabase.functions.invoke(
@@ -353,13 +486,20 @@ class _App_ApprovedUserQRPageState extends State<App_ApprovedUserQRPage> {
           'email': cleanEmail,
           'full_name': fullName,
           'registration_id': widget.registrationId,
+          'qr_code_source': qrSourceLabel,
           'pdf_base64': pdfBase64,
           'filename': safeFileName,
         },
       );
 
+      final functionData = response.data;
+
       if (response.status < 200 || response.status >= 300) {
-        throw Exception(response.data.toString());
+        throw Exception(_readFunctionMessage(functionData));
+      }
+
+      if (functionData is Map && functionData['success'] == false) {
+        throw Exception(_readFunctionMessage(functionData));
       }
 
       await _markRequestAsApproved();
@@ -371,7 +511,7 @@ class _App_ApprovedUserQRPageState extends State<App_ApprovedUserQRPage> {
         iconColor: primaryGreen,
         title: 'QR Sent Successfully',
         message:
-            'The QR ID PDF has been sent to $cleanEmail. The request is now marked as Approved.',
+            'The exact QR_Code PDF has been sent to $cleanEmail. The request is now marked as Approved.',
       );
     } catch (e) {
       if (!mounted) return;
@@ -381,7 +521,7 @@ class _App_ApprovedUserQRPageState extends State<App_ApprovedUserQRPage> {
         iconColor: Colors.red.shade600,
         title: 'Email Sending Failed',
         message:
-            'The QR PDF was created, but it was not sent.\n\nError: $e\n\nMake sure your Supabase Function has RESEND_API_KEY in secrets.',
+            'The QR PDF was created using QR_Code, but it was not sent.\n\nError: $e\n\nMake sure your Supabase function uses your verified sender:\nnoreply@send.santaecamp.com',
       );
     } finally {
       if (mounted) {
@@ -419,7 +559,7 @@ class _App_ApprovedUserQRPageState extends State<App_ApprovedUserQRPage> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'Send QR PDF to Email?',
+                    'Send Exact QR PDF?',
                     textAlign: TextAlign.center,
                     style: GoogleFonts.poppins(
                       fontSize: 21,
@@ -428,7 +568,7 @@ class _App_ApprovedUserQRPageState extends State<App_ApprovedUserQRPage> {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    'The system will convert the QR ID into a PDF and send it to:',
+                    'The system will use the exact QR_Code from Registration_Table and send it to:',
                     textAlign: TextAlign.center,
                     style: GoogleFonts.poppins(
                       fontSize: 14,
@@ -620,6 +760,32 @@ class _App_ApprovedUserQRPageState extends State<App_ApprovedUserQRPage> {
     );
   }
 
+  Widget _buildQrPreview() {
+    if (qrImageBytes != null) {
+      return Image.memory(
+        qrImageBytes!,
+        width: 250,
+        height: 250,
+        fit: BoxFit.contain,
+      );
+    }
+
+    if (qrData.isNotEmpty) {
+      return QrImageView(
+        data: qrData,
+        version: QrVersions.auto,
+        size: 250,
+        gapless: true,
+        foregroundColor: Colors.black,
+      );
+    }
+
+    return Text(
+      'No QR_Code available',
+      style: GoogleFonts.poppins(fontSize: 15, color: Colors.black54),
+    );
+  }
+
   Widget _buildQrCard() {
     return Container(
       padding: const EdgeInsets.all(22),
@@ -644,21 +810,7 @@ class _App_ApprovedUserQRPageState extends State<App_ApprovedUserQRPage> {
               borderRadius: BorderRadius.circular(22),
               border: Border.all(color: primaryGreen.withOpacity(0.15)),
             ),
-            child: qrData.isNotEmpty
-                ? QrImageView(
-                    data: qrData,
-                    version: QrVersions.auto,
-                    size: 250,
-                    gapless: true,
-                    foregroundColor: Colors.black,
-                  )
-                : Text(
-                    'No QR code available',
-                    style: GoogleFonts.poppins(
-                      fontSize: 15,
-                      color: Colors.black54,
-                    ),
-                  ),
+            child: _buildQrPreview(),
           ),
           const SizedBox(height: 26),
           Text(
@@ -686,6 +838,14 @@ class _App_ApprovedUserQRPageState extends State<App_ApprovedUserQRPage> {
             icon: Icons.confirmation_number_outlined,
             label: 'Registration ID:',
             value: widget.registrationId,
+          ),
+          const SizedBox(height: 10),
+          _detailRow(
+            icon: Icons.qr_code_2_rounded,
+            label: 'QR Source:',
+            value: qrSourceLabel.isEmpty
+                ? 'Registration_Table → QR_Code'
+                : qrSourceLabel,
           ),
           const SizedBox(height: 10),
           _detailRow(
@@ -725,7 +885,9 @@ class _App_ApprovedUserQRPageState extends State<App_ApprovedUserQRPage> {
               width: double.infinity,
               height: 48,
               child: ElevatedButton.icon(
-                onPressed: isSendingEmail || isLoading ? null : _sendQrToEmail,
+                onPressed: isSendingEmail || isLoading || !hasQrContent
+                    ? null
+                    : _sendQrToEmail,
                 icon: isSendingEmail
                     ? const SizedBox(
                         width: 18,
@@ -737,7 +899,7 @@ class _App_ApprovedUserQRPageState extends State<App_ApprovedUserQRPage> {
                       )
                     : const Icon(Icons.email_rounded, color: Colors.white),
                 label: Text(
-                  isSendingEmail ? 'Sending PDF...' : 'Send QR PDF to Email',
+                  isSendingEmail ? 'Sending PDF...' : 'Send Exact QR to Email',
                   style: GoogleFonts.poppins(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -762,7 +924,9 @@ class _App_ApprovedUserQRPageState extends State<App_ApprovedUserQRPage> {
                   child: SizedBox(
                     height: 46,
                     child: ElevatedButton.icon(
-                      onPressed: isLoading || isSendingEmail ? null : _printPdf,
+                      onPressed: isLoading || isSendingEmail || !hasQrContent
+                          ? null
+                          : _printPdf,
                       icon: const Icon(
                         Icons.print,
                         color: Colors.white,
@@ -792,7 +956,7 @@ class _App_ApprovedUserQRPageState extends State<App_ApprovedUserQRPage> {
                   child: SizedBox(
                     height: 46,
                     child: ElevatedButton.icon(
-                      onPressed: isLoading || isSendingEmail
+                      onPressed: isLoading || isSendingEmail || !hasQrContent
                           ? null
                           : _downloadPdf,
                       icon: const Icon(
@@ -843,7 +1007,7 @@ class _App_ApprovedUserQRPageState extends State<App_ApprovedUserQRPage> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'The system will convert this QR ID layout into a PDF file and send it to the resident email as an attachment.',
+              'The system will fetch the exact QR_Code from Registration_Table. If QR_Code is saved as a QR image, it will use that image directly instead of generating a new QR.',
               style: GoogleFonts.poppins(
                 fontSize: 13.5,
                 height: 1.5,

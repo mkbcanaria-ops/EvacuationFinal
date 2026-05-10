@@ -1,12 +1,13 @@
 // ignore_for_file: use_build_context_synchronously
 
+import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' show PointerDeviceKind;
 import 'package:excel/excel.dart' as xls;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:universal_html/html.dart' as html;
 
 class AppReportsPreviewPage extends StatefulWidget {
   final DateTime startDate;
@@ -662,6 +663,61 @@ class _AppReportsPreviewPageState extends State<AppReportsPreviewPage> {
         errorMessage = e.toString();
       });
     }
+  }
+
+  Future<bool> _requestStoragePermission() async {
+    if (!Platform.isAndroid) return false;
+
+    final manageStatus = await Permission.manageExternalStorage.status;
+
+    if (manageStatus.isGranted) {
+      return true;
+    }
+
+    final requestedManageStatus = await Permission.manageExternalStorage
+        .request();
+
+    if (requestedManageStatus.isGranted) {
+      return true;
+    }
+
+    final storageStatus = await Permission.storage.status;
+
+    if (storageStatus.isGranted) {
+      return true;
+    }
+
+    final requestedStorageStatus = await Permission.storage.request();
+
+    return requestedStorageStatus.isGranted;
+  }
+
+  Future<void> _saveExcelBytesToDownloads({
+    required Uint8List excelBytes,
+    required String fileName,
+  }) async {
+    if (!Platform.isAndroid) {
+      throw Exception('This download function is for Android mobile only.');
+    }
+
+    final hasPermission = await _requestStoragePermission();
+
+    if (!hasPermission) {
+      throw Exception('Storage permission was not granted.');
+    }
+
+    final downloadsDirectory = Directory(
+      '/storage/emulated/0/Download/MSWDO_Reports',
+    );
+
+    if (!await downloadsDirectory.exists()) {
+      await downloadsDirectory.create(recursive: true);
+    }
+
+    final filePath = '${downloadsDirectory.path}/$fileName';
+
+    final file = File(filePath);
+    await file.writeAsBytes(excelBytes, flush: true);
   }
 
   Future<void> _downloadExcel() async {
@@ -1539,32 +1595,35 @@ class _AppReportsPreviewPageState extends State<AppReportsPreviewPage> {
         throw Exception('Failed to encode excel file.');
       }
 
-      final data = Uint8List.fromList(bytes);
-      final blob = html.Blob([
-        data,
-      ], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      final url = html.Url.createObjectUrlFromBlob(blob);
+      final excelBytes = Uint8List.fromList(bytes);
 
       final filename =
           'Preview_Report_${_formatDate(widget.startDate)}_to_${_formatDateTimeForFilename(widget.endDateTime)}.xlsx';
 
-      html.AnchorElement(href: url)
-        ..setAttribute('download', filename)
-        ..click();
-
-      html.Url.revokeObjectUrl(url);
+      await _saveExcelBytesToDownloads(
+        excelBytes: excelBytes,
+        fileName: filename,
+      );
 
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Excel downloaded successfully.')),
+        SnackBar(
+          content: Text('Excel saved to Downloads/MSWDO_Reports/$filename'),
+          backgroundColor: const Color(0xFF0D743D),
+          duration: const Duration(seconds: 4),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Download failed: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Download failed: $e'),
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 5),
+        ),
+      );
     } finally {
       if (!mounted) return;
       setState(() {

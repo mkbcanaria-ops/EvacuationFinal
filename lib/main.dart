@@ -1,11 +1,14 @@
 import 'package:evacutaion/App/LandingPage.dart';
 import 'package:evacutaion/App/MainDashbaord.dart';
+import 'package:evacutaion/App/Sidebar/Appreport/AppReport.dart';
 import 'package:evacutaion/ResidentPAges/ResidentDashboard.dart';
+import 'package:evacutaion/Trrepor.dart';
 import 'package:evacutaion/WebPages/LoginPage.dart';
 import 'package:evacutaion/WebPages/WLandingPage.dart';
 import 'package:evacutaion/WebPages/WebMainDashboard.dart';
 import 'package:evacutaion/WebPages/sidebar/Report/Report.dart';
 import 'package:evacutaion/WebPages/sidebar/Report/Report_Preview.dart';
+import 'package:evacutaion/WebPages/sidebar/Request/Request.dart';
 import 'package:flutter/material.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';

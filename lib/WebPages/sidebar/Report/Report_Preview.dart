@@ -77,6 +77,75 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
   bool isLoading = true;
   String? errorMessage;
   bool isDownloading = false;
+  final Map<String, TextEditingController> _outsideEcControllers = {};
+
+  String _barangayKey(String barangay) {
+    return barangay.trim().toLowerCase();
+  }
+
+  String _outsideControllerKey(String barangay, String field) {
+    return '${_barangayKey(barangay)}|||$field';
+  }
+
+  int _toIntValue(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+
+    final raw = value.toString().trim();
+    if (raw.isEmpty) return 0;
+
+    return int.tryParse(raw) ?? 0;
+  }
+
+  String _displayManualNumber(dynamic value) {
+    final number = _toIntValue(value);
+    return number == 0 ? '' : number.toString();
+  }
+
+  TextEditingController _outsideEcController({
+    required String barangay,
+    required String field,
+    required dynamic value,
+  }) {
+    final key = _outsideControllerKey(barangay, field);
+
+    if (!_outsideEcControllers.containsKey(key)) {
+      _outsideEcControllers[key] = TextEditingController(
+        text: _displayManualNumber(value),
+      );
+    }
+
+    return _outsideEcControllers[key]!;
+  }
+
+  void _recalculateTotalDisplaced(Map<String, dynamic> row) {
+    final insideFamiliesCum = _toIntValue(row['insideEcFamiliesCum']);
+    final insideFamiliesNow = _toIntValue(row['insideEcFamiliesNow']);
+    final insidePersonsCum = _toIntValue(row['personsActualCum']);
+    final insidePersonsNow = _toIntValue(row['personsActualNow']);
+
+    final outsideFamiliesCum = _toIntValue(row['outsideEcFamiliesCum']);
+    final outsideFamiliesNow = _toIntValue(row['outsideEcFamiliesNow']);
+    final outsidePersonsCum = _toIntValue(row['outsideEcPersonsCum']);
+    final outsidePersonsNow = _toIntValue(row['outsideEcPersonsNow']);
+
+    row['totalDisplacedFamiliesCum'] = insideFamiliesCum + outsideFamiliesCum;
+    row['totalDisplacedFamiliesNow'] = insideFamiliesNow + outsideFamiliesNow;
+    row['totalDisplacedPersonsCum'] = insidePersonsCum + outsidePersonsCum;
+    row['totalDisplacedPersonsNow'] = insidePersonsNow + outsidePersonsNow;
+  }
+
+  void _updateOutsideEcValue(
+    Map<String, dynamic> row,
+    String field,
+    String value,
+  ) {
+    row[field] = _toIntValue(value);
+    _recalculateTotalDisplaced(row);
+
+    setState(() {});
+  }
 
   @override
   void initState() {
@@ -86,6 +155,12 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
 
   @override
   void dispose() {
+    for (final controller in _outsideEcControllers.values) {
+      controller.dispose();
+    }
+
+    _outsideEcControllers.clear();
+
     _verticalController.dispose();
     _horizontalController.dispose();
     super.dispose();
@@ -822,7 +897,6 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
         wrap: true,
       );
 
-      // Increased all widths by 10%
       final widths = <int, double>{
         0: 35.2,
         1: 30.8,
@@ -870,7 +944,7 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
         sheet.setColumnWidth(col, width);
       });
 
-      for (int r = 0; r < 200; r++) {
+      for (int r = 0; r < 220; r++) {
         sheet.setRowHeight(r, 24);
       }
 
@@ -878,6 +952,7 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
       sheet.setRowHeight(4, 24);
       sheet.setRowHeight(5, 22);
       sheet.setRowHeight(6, 26);
+      sheet.setRowHeight(7, 26);
 
       final int totalBarangayAffected = barangayCounts.length;
       final int totalFamilies = familyCounts.values.fold(0, (a, b) => a + b);
@@ -889,81 +964,128 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
 
       final int totalInsideEcFamiliesCum = evacuationCenterRows.fold(
         0,
-        (sum, row) => sum + ((row['insideEcFamiliesCum'] ?? 0) as int),
+        (sum, row) => sum + _toIntValue(row['insideEcFamiliesCum']),
       );
+
       final int totalInsideEcFamiliesNow = evacuationCenterRows.fold(
         0,
-        (sum, row) => sum + ((row['insideEcFamiliesNow'] ?? 0) as int),
+        (sum, row) => sum + _toIntValue(row['insideEcFamiliesNow']),
       );
+
       final int totalPersonsActualCum = evacuationCenterRows.fold(
         0,
-        (sum, row) => sum + ((row['personsActualCum'] ?? 0) as int),
+        (sum, row) => sum + _toIntValue(row['personsActualCum']),
       );
+
       final int totalPersonsActualNow = evacuationCenterRows.fold(
         0,
-        (sum, row) => sum + ((row['personsActualNow'] ?? 0) as int),
+        (sum, row) => sum + _toIntValue(row['personsActualNow']),
       );
+
+      final int totalOutsideEcFamiliesCum = evacuationCenterRows.fold(
+        0,
+        (sum, row) => sum + _toIntValue(row['outsideEcFamiliesCum']),
+      );
+
+      final int totalOutsideEcFamiliesNow = evacuationCenterRows.fold(
+        0,
+        (sum, row) => sum + _toIntValue(row['outsideEcFamiliesNow']),
+      );
+
+      final int totalOutsideEcPersonsCum = evacuationCenterRows.fold(
+        0,
+        (sum, row) => sum + _toIntValue(row['outsideEcPersonsCum']),
+      );
+
+      final int totalOutsideEcPersonsNow = evacuationCenterRows.fold(
+        0,
+        (sum, row) => sum + _toIntValue(row['outsideEcPersonsNow']),
+      );
+
+      final int totalDisplacedFamiliesCum =
+          totalInsideEcFamiliesCum + totalOutsideEcFamiliesCum;
+      final int totalDisplacedFamiliesNow =
+          totalInsideEcFamiliesNow + totalOutsideEcFamiliesNow;
+      final int totalDisplacedPersonsCum =
+          totalPersonsActualCum + totalOutsideEcPersonsCum;
+      final int totalDisplacedPersonsNow =
+          totalPersonsActualNow + totalOutsideEcPersonsNow;
 
       final int grandInfantMale = evacuationCenterRows.fold(
         0,
         (sum, row) => sum + ((row['infantMaleNow'] ?? 0) as int),
       );
+
       final int grandInfantFemale = evacuationCenterRows.fold(
         0,
         (sum, row) => sum + ((row['infantFemaleNow'] ?? 0) as int),
       );
+
       final int grandToddlerMale = evacuationCenterRows.fold(
         0,
         (sum, row) => sum + ((row['toddlerMaleNow'] ?? 0) as int),
       );
+
       final int grandToddlerFemale = evacuationCenterRows.fold(
         0,
         (sum, row) => sum + ((row['toddlerFemaleNow'] ?? 0) as int),
       );
+
       final int grandPreschoolMale = evacuationCenterRows.fold(
         0,
         (sum, row) => sum + ((row['preschoolMaleNow'] ?? 0) as int),
       );
+
       final int grandPreschoolFemale = evacuationCenterRows.fold(
         0,
         (sum, row) => sum + ((row['preschoolFemaleNow'] ?? 0) as int),
       );
+
       final int grandSchoolAgeMale = evacuationCenterRows.fold(
         0,
         (sum, row) => sum + ((row['schoolAgeMaleNow'] ?? 0) as int),
       );
+
       final int grandSchoolAgeFemale = evacuationCenterRows.fold(
         0,
         (sum, row) => sum + ((row['schoolAgeFemaleNow'] ?? 0) as int),
       );
+
       final int grandTeenageMale = evacuationCenterRows.fold(
         0,
         (sum, row) => sum + ((row['teenageMaleNow'] ?? 0) as int),
       );
+
       final int grandTeenageFemale = evacuationCenterRows.fold(
         0,
         (sum, row) => sum + ((row['teenageFemaleNow'] ?? 0) as int),
       );
+
       final int grandAdultMale = evacuationCenterRows.fold(
         0,
         (sum, row) => sum + ((row['adultMaleNow'] ?? 0) as int),
       );
+
       final int grandAdultFemale = evacuationCenterRows.fold(
         0,
         (sum, row) => sum + ((row['adultFemaleNow'] ?? 0) as int),
       );
+
       final int grandSeniorMale = evacuationCenterRows.fold(
         0,
         (sum, row) => sum + ((row['seniorMaleNow'] ?? 0) as int),
       );
+
       final int grandSeniorFemale = evacuationCenterRows.fold(
         0,
         (sum, row) => sum + ((row['seniorFemaleNow'] ?? 0) as int),
       );
+
       final int grandTotalInsideMale = evacuationCenterRows.fold(
         0,
         (sum, row) => sum + ((row['totalInsideMaleNow'] ?? 0) as int),
       );
+
       final int grandTotalInsideFemale = evacuationCenterRows.fold(
         0,
         (sum, row) => sum + ((row['totalInsideFemaleNow'] ?? 0) as int),
@@ -975,58 +1097,68 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
         xls.TextCellValue('Republic of the Philippines'),
         titleStyle,
       );
+
       setCellRC(1, 0, xls.TextCellValue('Province of Ilocos Sur'), titleStyle);
 
-      mergeRC(3, 0, 6, 0);
+      // HEADER MERGES - updated to use rows 3 to 7
+      mergeRC(3, 0, 7, 0);
 
       mergeRC(3, 1, 3, 5);
-      mergeRC(4, 1, 5, 2);
-      mergeRC(6, 1, 6, 1);
-      mergeRC(6, 2, 6, 2);
-      mergeRC(4, 3, 6, 3);
-      mergeRC(4, 4, 6, 4);
-      mergeRC(4, 5, 6, 5);
+      mergeRC(4, 1, 6, 2);
+      mergeRC(7, 1, 7, 1);
+      mergeRC(7, 2, 7, 2);
+      mergeRC(4, 3, 7, 3);
+      mergeRC(4, 4, 7, 4);
+      mergeRC(4, 5, 7, 5);
 
       mergeRC(3, 6, 3, 19);
-      mergeRC(4, 6, 6, 6);
-      mergeRC(4, 7, 6, 7);
-      mergeRC(4, 8, 5, 9);
-      mergeRC(6, 8, 6, 8);
-      mergeRC(6, 9, 6, 9);
+      mergeRC(4, 6, 7, 6);
+      mergeRC(4, 7, 7, 7);
+      mergeRC(4, 8, 6, 9);
+      mergeRC(7, 8, 7, 8);
+      mergeRC(7, 9, 7, 9);
 
+      // NUMBER OF DISPLACED - fixed layout
       mergeRC(4, 10, 4, 19);
       mergeRC(5, 10, 5, 15);
       mergeRC(5, 16, 5, 19);
 
-      for (int c = 10; c <= 19; c++) {
-        mergeRC(6, c, 6, c);
-      }
+      mergeRC(6, 10, 6, 11);
+      mergeRC(6, 12, 6, 13);
+      mergeRC(6, 14, 6, 15);
+      mergeRC(6, 16, 6, 17);
+      mergeRC(6, 18, 6, 19);
 
       mergeRC(3, 20, 3, 23);
       mergeRC(4, 20, 4, 21);
       mergeRC(4, 22, 4, 23);
-      mergeRC(5, 20, 5, 21);
-      mergeRC(5, 22, 5, 23);
+      mergeRC(5, 20, 6, 21);
+      mergeRC(5, 22, 6, 23);
 
       mergeRC(3, 24, 3, 39);
       for (int c = 24; c <= 39; c += 2) {
         mergeRC(4, c, 4, c + 1);
+        mergeRC(6, c, 7, c);
+        mergeRC(6, c + 1, 7, c + 1);
       }
 
-      for (int r = 3; r <= 6; r++) {
+      for (int r = 3; r <= 7; r++) {
         setCellRC(r, 0, xls.TextCellValue(''), blueHeaderStyle);
       }
-      for (int r = 3; r <= 6; r++) {
+
+      for (int r = 3; r <= 7; r++) {
         for (int c = 1; c <= 19; c++) {
           setCellRC(r, c, xls.TextCellValue(''), greenHeaderStyle);
         }
       }
-      for (int r = 3; r <= 6; r++) {
+
+      for (int r = 3; r <= 7; r++) {
         for (int c = 20; c <= 23; c++) {
           setCellRC(r, c, xls.TextCellValue(''), yellowHeaderStyle);
         }
       }
-      for (int r = 3; r <= 6; r++) {
+
+      for (int r = 3; r <= 7; r++) {
         for (int c = 24; c <= 39; c++) {
           setCellRC(r, c, xls.TextCellValue(''), beigeHeaderStyle);
         }
@@ -1045,24 +1177,29 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
         xls.TextCellValue('NUMBER OF AFFECTED'),
         greenHeaderStyle,
       );
+
       setCellRC(4, 1, xls.TextCellValue('Barangays'), greenHeaderStyle);
-      setCellRC(6, 1, xls.TextCellValue('Name'), greenHeaderStyle);
-      setCellRC(6, 2, xls.TextCellValue('Count'), greenHeaderStyle);
+      setCellRC(7, 1, xls.TextCellValue('Name'), greenHeaderStyle);
+      setCellRC(7, 2, xls.TextCellValue('Count'), greenHeaderStyle);
       setCellRC(4, 3, xls.TextCellValue('Families'), greenHeaderStyle);
       setCellRC(4, 4, xls.TextCellValue('Persons'), greenHeaderStyle);
       setCellRC(4, 5, xls.TextCellValue('4Ps\nFamilies'), greenHeaderStyle);
 
       setCellRC(3, 6, xls.TextCellValue('DISPLACEMENT DATA'), greenHeaderStyle);
+
       setCellRC(
         4,
         6,
         xls.TextCellValue('NAME OF EVACUATION'),
         greenHeaderStyle,
       );
+
       setCellRC(4, 7, xls.TextCellValue('ADDRESS'), greenHeaderStyle);
+
       setCellRC(4, 8, xls.TextCellValue('Origin of IDPs'), greenHeaderStyle);
-      setCellRC(6, 8, xls.TextCellValue('Brgy Name'), greenHeaderStyle);
-      setCellRC(6, 9, xls.TextCellValue('Brgy Count'), greenHeaderStyle);
+
+      setCellRC(7, 8, xls.TextCellValue('Brgy Name'), greenHeaderStyle);
+      setCellRC(7, 9, xls.TextCellValue('Brgy Count'), greenHeaderStyle);
 
       setCellRC(
         4,
@@ -1070,30 +1207,48 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
         xls.TextCellValue('NUMBER OF DISPLACED'),
         greenHeaderStyle,
       );
+
       setCellRC(5, 10, xls.TextCellValue('INSIDE ECs'), greenHeaderStyle);
       setCellRC(5, 16, xls.TextCellValue('OUTSIDE ECs'), greenHeaderStyle);
 
       setCellRC(6, 10, xls.TextCellValue('Families'), greenHeaderStyle);
-      setCellRC(6, 11, xls.TextCellValue('NOW'), greenHeaderStyle);
-      setCellRC(6, 12, xls.TextCellValue('Persons'), greenHeaderStyle);
-      setCellRC(6, 13, xls.TextCellValue('NOW'), greenHeaderStyle);
-      setCellRC(6, 14, xls.TextCellValue('Estimate'), greenHeaderStyle);
-      setCellRC(6, 15, xls.TextCellValue('NOW'), greenHeaderStyle);
-
+      setCellRC(
+        6,
+        12,
+        xls.TextCellValue('Persons\n(Actual)'),
+        greenHeaderStyle,
+      );
+      setCellRC(
+        6,
+        14,
+        xls.TextCellValue('Persons\n(Estimate)'),
+        greenHeaderStyle,
+      );
       setCellRC(6, 16, xls.TextCellValue('Families'), greenHeaderStyle);
-      setCellRC(6, 17, xls.TextCellValue('NOW'), greenHeaderStyle);
       setCellRC(6, 18, xls.TextCellValue('Persons'), greenHeaderStyle);
-      setCellRC(6, 19, xls.TextCellValue('NOW'), greenHeaderStyle);
+
+      setCellRC(7, 10, xls.TextCellValue('CUM'), greenHeaderStyle);
+      setCellRC(7, 11, xls.TextCellValue('NOW'), greenHeaderStyle);
+      setCellRC(7, 12, xls.TextCellValue('CUM'), greenHeaderStyle);
+      setCellRC(7, 13, xls.TextCellValue('NOW'), greenHeaderStyle);
+      setCellRC(7, 14, xls.TextCellValue('CUM'), greenHeaderStyle);
+      setCellRC(7, 15, xls.TextCellValue('NOW'), greenHeaderStyle);
+      setCellRC(7, 16, xls.TextCellValue('CUM'), greenHeaderStyle);
+      setCellRC(7, 17, xls.TextCellValue('NOW'), greenHeaderStyle);
+      setCellRC(7, 18, xls.TextCellValue('CUM'), greenHeaderStyle);
+      setCellRC(7, 19, xls.TextCellValue('NOW'), greenHeaderStyle);
 
       setCellRC(3, 20, xls.TextCellValue('TOTAL DISPLACED'), yellowHeaderStyle);
+
       setCellRC(4, 20, xls.TextCellValue('Families'), yellowHeaderStyle);
       setCellRC(4, 22, xls.TextCellValue('Persons'), yellowHeaderStyle);
       setCellRC(5, 20, xls.TextCellValue('Total Families'), yellowHeaderStyle);
       setCellRC(5, 22, xls.TextCellValue('Total Persons'), yellowHeaderStyle);
-      setCellRC(6, 20, xls.TextCellValue('CUM'), yellowHeaderStyle);
-      setCellRC(6, 21, xls.TextCellValue('NOW'), yellowHeaderStyle);
-      setCellRC(6, 22, xls.TextCellValue('CUM'), yellowHeaderStyle);
-      setCellRC(6, 23, xls.TextCellValue('NOW'), yellowHeaderStyle);
+
+      setCellRC(7, 20, xls.TextCellValue('CUM'), yellowHeaderStyle);
+      setCellRC(7, 21, xls.TextCellValue('NOW'), yellowHeaderStyle);
+      setCellRC(7, 22, xls.TextCellValue('CUM'), yellowHeaderStyle);
+      setCellRC(7, 23, xls.TextCellValue('NOW'), yellowHeaderStyle);
 
       setCellRC(
         3,
@@ -1121,7 +1276,7 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
         setCellRC(6, col + 1, xls.TextCellValue('NOW'), beigeHeaderStyle);
       });
 
-      int rowIndex = 7;
+      int rowIndex = 8;
 
       void fillRowBackground(
         int row,
@@ -1140,14 +1295,17 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
 
       fillRowBackground(rowIndex, gray1LeftStyle, gray1NumberStyle);
       setCellRC(rowIndex, 0, xls.TextCellValue('GRAND TOTAL'), gray1LeftStyle);
+
       setCellRC(
         rowIndex,
         2,
         xls.IntCellValue(totalBarangayAffected),
         gray1NumberStyle,
       );
+
       setCellRC(rowIndex, 3, xls.IntCellValue(totalFamilies), gray1NumberStyle);
       setCellRC(rowIndex, 4, xls.IntCellValue(totalPersons), gray1NumberStyle);
+
       setCellRC(
         rowIndex,
         5,
@@ -1161,53 +1319,80 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
         xls.IntCellValue(totalInsideEcFamiliesCum),
         gray1NumberStyle,
       );
+
       setCellRC(
         rowIndex,
         11,
         xls.IntCellValue(totalInsideEcFamiliesNow),
         gray1NumberStyle,
       );
+
       setCellRC(
         rowIndex,
         12,
         xls.IntCellValue(totalPersonsActualCum),
         gray1NumberStyle,
       );
+
       setCellRC(
         rowIndex,
         13,
         xls.IntCellValue(totalPersonsActualNow),
         gray1NumberStyle,
       );
-      setCellRC(rowIndex, 14, xls.IntCellValue(0), gray1NumberStyle);
-      setCellRC(rowIndex, 15, xls.IntCellValue(0), gray1NumberStyle);
-      setCellRC(rowIndex, 16, xls.IntCellValue(0), gray1NumberStyle);
-      setCellRC(rowIndex, 17, xls.IntCellValue(0), gray1NumberStyle);
-      setCellRC(rowIndex, 18, xls.IntCellValue(0), gray1NumberStyle);
-      setCellRC(rowIndex, 19, xls.IntCellValue(0), gray1NumberStyle);
+
+      setCellRC(rowIndex, 14, xls.TextCellValue(''), gray1NumberStyle);
+      setCellRC(rowIndex, 15, xls.TextCellValue(''), gray1NumberStyle);
+      setCellRC(
+        rowIndex,
+        16,
+        xls.IntCellValue(totalOutsideEcFamiliesCum),
+        gray1NumberStyle,
+      );
+      setCellRC(
+        rowIndex,
+        17,
+        xls.IntCellValue(totalOutsideEcFamiliesNow),
+        gray1NumberStyle,
+      );
+      setCellRC(
+        rowIndex,
+        18,
+        xls.IntCellValue(totalOutsideEcPersonsCum),
+        gray1NumberStyle,
+      );
+      setCellRC(
+        rowIndex,
+        19,
+        xls.IntCellValue(totalOutsideEcPersonsNow),
+        gray1NumberStyle,
+      );
 
       setCellRC(
         rowIndex,
         20,
-        xls.IntCellValue(totalInsideEcFamiliesCum),
+        xls.IntCellValue(totalDisplacedFamiliesCum),
         gray1NumberStyle,
       );
+
       setCellRC(
         rowIndex,
         21,
-        xls.IntCellValue(totalInsideEcFamiliesNow),
+        xls.IntCellValue(totalDisplacedFamiliesNow),
         gray1NumberStyle,
       );
+
       setCellRC(
         rowIndex,
         22,
-        xls.IntCellValue(totalPersonsActualCum),
+        xls.IntCellValue(totalDisplacedPersonsCum),
         gray1NumberStyle,
       );
+
       setCellRC(
         rowIndex,
         23,
-        xls.IntCellValue(totalPersonsActualNow),
+        xls.IntCellValue(totalDisplacedPersonsNow),
         gray1NumberStyle,
       );
 
@@ -1319,7 +1504,8 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
       for (final row in evacuationCenterRows) {
         final String barangay = (row['barangay'] ?? '').toString();
         final String site = (row['site'] ?? '').toString();
-        final bool isFirstRowOfBarangay = barangay != lastBarangay;
+        final bool isFirstRowOfBarangay =
+            _barangayKey(barangay) != _barangayKey(lastBarangay);
 
         fillRowBackground(rowIndex, bodyTextStyle, bodyNumberStyle);
 
@@ -1329,6 +1515,7 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
           xls.TextCellValue(isFirstRowOfBarangay ? barangay : ''),
           bodyTextStyle,
         );
+
         setCellRC(
           rowIndex,
           2,
@@ -1337,6 +1524,7 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
           ),
           bodyNumberStyle,
         );
+
         setCellRC(
           rowIndex,
           3,
@@ -1345,6 +1533,7 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
           ),
           bodyNumberStyle,
         );
+
         setCellRC(
           rowIndex,
           4,
@@ -1353,6 +1542,7 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
           ),
           bodyNumberStyle,
         );
+
         setCellRC(
           rowIndex,
           5,
@@ -1363,13 +1553,16 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
         );
 
         setCellRC(rowIndex, 6, xls.TextCellValue(site), bodyTextStyle);
+
         setCellRC(
           rowIndex,
           7,
           xls.TextCellValue('SANTA, ILOCOS SUR'),
           bodyTextStyle,
         );
+
         setCellRC(rowIndex, 8, xls.TextCellValue(barangay), bodyTextStyle);
+
         setCellRC(
           rowIndex,
           9,
@@ -1383,53 +1576,90 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
           xls.IntCellValue((row['insideEcFamiliesCum'] ?? 0) as int),
           bodyNumberStyle,
         );
+
         setCellRC(
           rowIndex,
           11,
           xls.IntCellValue((row['insideEcFamiliesNow'] ?? 0) as int),
           bodyNumberStyle,
         );
+
         setCellRC(
           rowIndex,
           12,
           xls.IntCellValue((row['personsActualCum'] ?? 0) as int),
           bodyNumberStyle,
         );
+
         setCellRC(
           rowIndex,
           13,
           xls.IntCellValue((row['personsActualNow'] ?? 0) as int),
           bodyNumberStyle,
         );
+
         setCellRC(rowIndex, 14, xls.TextCellValue(''), bodyNumberStyle);
         setCellRC(rowIndex, 15, xls.TextCellValue(''), bodyNumberStyle);
-        setCellRC(rowIndex, 16, xls.TextCellValue(''), bodyNumberStyle);
-        setCellRC(rowIndex, 17, xls.TextCellValue(''), bodyNumberStyle);
-        setCellRC(rowIndex, 18, xls.TextCellValue(''), bodyNumberStyle);
-        setCellRC(rowIndex, 19, xls.TextCellValue(''), bodyNumberStyle);
+        setCellRC(
+          rowIndex,
+          16,
+          isFirstRowOfBarangay
+              ? xls.IntCellValue(_toIntValue(row['outsideEcFamiliesCum']))
+              : xls.TextCellValue(''),
+          bodyNumberStyle,
+        );
+        setCellRC(
+          rowIndex,
+          17,
+          isFirstRowOfBarangay
+              ? xls.IntCellValue(_toIntValue(row['outsideEcFamiliesNow']))
+              : xls.TextCellValue(''),
+          bodyNumberStyle,
+        );
+        setCellRC(
+          rowIndex,
+          18,
+          isFirstRowOfBarangay
+              ? xls.IntCellValue(_toIntValue(row['outsideEcPersonsCum']))
+              : xls.TextCellValue(''),
+          bodyNumberStyle,
+        );
+        setCellRC(
+          rowIndex,
+          19,
+          isFirstRowOfBarangay
+              ? xls.IntCellValue(_toIntValue(row['outsideEcPersonsNow']))
+              : xls.TextCellValue(''),
+          bodyNumberStyle,
+        );
+
+        _recalculateTotalDisplaced(row);
 
         setCellRC(
           rowIndex,
           20,
-          xls.IntCellValue((row['totalDisplacedFamiliesCum'] ?? 0) as int),
+          xls.IntCellValue(_toIntValue(row['totalDisplacedFamiliesCum'])),
           bodyNumberStyle,
         );
+
         setCellRC(
           rowIndex,
           21,
-          xls.IntCellValue((row['totalDisplacedFamiliesNow'] ?? 0) as int),
+          xls.IntCellValue(_toIntValue(row['totalDisplacedFamiliesNow'])),
           bodyNumberStyle,
         );
+
         setCellRC(
           rowIndex,
           22,
-          xls.IntCellValue((row['totalDisplacedPersonsCum'] ?? 0) as int),
+          xls.IntCellValue(_toIntValue(row['totalDisplacedPersonsCum'])),
           bodyNumberStyle,
         );
+
         setCellRC(
           rowIndex,
           23,
-          xls.IntCellValue((row['totalDisplacedPersonsNow'] ?? 0) as int),
+          xls.IntCellValue(_toIntValue(row['totalDisplacedPersonsNow'])),
           bodyNumberStyle,
         );
 
@@ -1439,90 +1669,105 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
           xls.IntCellValue((row['infantMaleNow'] ?? 0) as int),
           bodyNumberStyle,
         );
+
         setCellRC(
           rowIndex,
           25,
           xls.IntCellValue((row['infantFemaleNow'] ?? 0) as int),
           bodyNumberStyle,
         );
+
         setCellRC(
           rowIndex,
           26,
           xls.IntCellValue((row['toddlerMaleNow'] ?? 0) as int),
           bodyNumberStyle,
         );
+
         setCellRC(
           rowIndex,
           27,
           xls.IntCellValue((row['toddlerFemaleNow'] ?? 0) as int),
           bodyNumberStyle,
         );
+
         setCellRC(
           rowIndex,
           28,
           xls.IntCellValue((row['preschoolMaleNow'] ?? 0) as int),
           bodyNumberStyle,
         );
+
         setCellRC(
           rowIndex,
           29,
           xls.IntCellValue((row['preschoolFemaleNow'] ?? 0) as int),
           bodyNumberStyle,
         );
+
         setCellRC(
           rowIndex,
           30,
           xls.IntCellValue((row['schoolAgeMaleNow'] ?? 0) as int),
           bodyNumberStyle,
         );
+
         setCellRC(
           rowIndex,
           31,
           xls.IntCellValue((row['schoolAgeFemaleNow'] ?? 0) as int),
           bodyNumberStyle,
         );
+
         setCellRC(
           rowIndex,
           32,
           xls.IntCellValue((row['teenageMaleNow'] ?? 0) as int),
           bodyNumberStyle,
         );
+
         setCellRC(
           rowIndex,
           33,
           xls.IntCellValue((row['teenageFemaleNow'] ?? 0) as int),
           bodyNumberStyle,
         );
+
         setCellRC(
           rowIndex,
           34,
           xls.IntCellValue((row['adultMaleNow'] ?? 0) as int),
           bodyNumberStyle,
         );
+
         setCellRC(
           rowIndex,
           35,
           xls.IntCellValue((row['adultFemaleNow'] ?? 0) as int),
           bodyNumberStyle,
         );
+
         setCellRC(
           rowIndex,
           36,
           xls.IntCellValue((row['seniorMaleNow'] ?? 0) as int),
           bodyNumberStyle,
         );
+
         setCellRC(
           rowIndex,
           37,
           xls.IntCellValue((row['seniorFemaleNow'] ?? 0) as int),
           bodyNumberStyle,
         );
+
         setCellRC(
           rowIndex,
           38,
           xls.IntCellValue((row['totalInsideMaleNow'] ?? 0) as int),
           bodyNumberStyle,
         );
+
         setCellRC(
           rowIndex,
           39,
@@ -1540,9 +1785,11 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
       }
 
       final data = Uint8List.fromList(bytes);
+
       final blob = html.Blob([
         data,
       ], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
       final url = html.Url.createObjectUrlFromBlob(blob);
 
       final filename =
@@ -1567,6 +1814,7 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
       ).showSnackBar(SnackBar(content: Text('Download failed: $e')));
     } finally {
       if (!mounted) return;
+
       setState(() {
         isDownloading = false;
       });
@@ -1605,6 +1853,42 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
           fontStyle: italic ? FontStyle.italic : FontStyle.normal,
           color: Colors.black,
           height: 1.0,
+        ),
+      ),
+    );
+  }
+
+  Widget _editableNumberCell({
+    required TextEditingController controller,
+    required double width,
+    required double height,
+    required ValueChanged<String> onChanged,
+    Color color = Colors.white,
+  }) {
+    return Container(
+      width: width,
+      height: height,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFDE7), // light yellow to show editable
+        border: Border.all(color: Colors.black, width: 1),
+      ),
+      child: TextField(
+        controller: controller,
+        onChanged: onChanged,
+        keyboardType: TextInputType.number,
+        textAlign: TextAlign.right,
+        textAlignVertical: TextAlignVertical.center,
+        style: GoogleFonts.arimo(
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          color: Colors.black,
+          height: 1.0,
+        ),
+        decoration: const InputDecoration(
+          isDense: true,
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 0),
         ),
       ),
     );
@@ -2033,6 +2317,8 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
     bool italicRegion = false,
     Color color = Colors.white,
     double height = 21,
+    bool editableOutsideEc = false,
+    Map<String, dynamic>? sourceRow,
   }) {
     return Row(
       children: [
@@ -2198,46 +2484,114 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
           alignment: Alignment.centerRight,
           textAlign: TextAlign.right,
         ),
-        _cell(
-          text: outsideEcFamiliesCum,
-          width: colOutsideEcFamiliesCum,
-          height: height,
-          bold: bold,
-          color: color,
-          fontSize: 15,
-          alignment: Alignment.centerRight,
-          textAlign: TextAlign.right,
-        ),
-        _cell(
-          text: outsideEcFamiliesNow,
-          width: colOutsideEcFamiliesNow,
-          height: height,
-          bold: bold,
-          color: color,
-          fontSize: 15,
-          alignment: Alignment.centerRight,
-          textAlign: TextAlign.right,
-        ),
-        _cell(
-          text: outsideEcPersonsCum,
-          width: colOutsideEcPersonsCum,
-          height: height,
-          bold: bold,
-          color: color,
-          fontSize: 15,
-          alignment: Alignment.centerRight,
-          textAlign: TextAlign.right,
-        ),
-        _cell(
-          text: outsideEcPersonsNow,
-          width: colOutsideEcPersonsNow,
-          height: height,
-          bold: bold,
-          color: color,
-          fontSize: 15,
-          alignment: Alignment.centerRight,
-          textAlign: TextAlign.right,
-        ),
+        editableOutsideEc && sourceRow != null
+            ? _editableNumberCell(
+                controller: _outsideEcController(
+                  barangay: (sourceRow['barangay'] ?? '').toString(),
+                  field: 'outsideEcFamiliesCum',
+                  value: sourceRow['outsideEcFamiliesCum'],
+                ),
+                width: colOutsideEcFamiliesCum,
+                height: height,
+                onChanged: (value) {
+                  _updateOutsideEcValue(
+                    sourceRow,
+                    'outsideEcFamiliesCum',
+                    value,
+                  );
+                },
+              )
+            : _cell(
+                text: outsideEcFamiliesCum,
+                width: colOutsideEcFamiliesCum,
+                height: height,
+                bold: bold,
+                color: color,
+                fontSize: 15,
+                alignment: Alignment.centerRight,
+                textAlign: TextAlign.right,
+              ),
+        editableOutsideEc && sourceRow != null
+            ? _editableNumberCell(
+                controller: _outsideEcController(
+                  barangay: (sourceRow['barangay'] ?? '').toString(),
+                  field: 'outsideEcFamiliesNow',
+                  value: sourceRow['outsideEcFamiliesNow'],
+                ),
+                width: colOutsideEcFamiliesNow,
+                height: height,
+                onChanged: (value) {
+                  _updateOutsideEcValue(
+                    sourceRow,
+                    'outsideEcFamiliesNow',
+                    value,
+                  );
+                },
+              )
+            : _cell(
+                text: outsideEcFamiliesNow,
+                width: colOutsideEcFamiliesNow,
+                height: height,
+                bold: bold,
+                color: color,
+                fontSize: 15,
+                alignment: Alignment.centerRight,
+                textAlign: TextAlign.right,
+              ),
+        editableOutsideEc && sourceRow != null
+            ? _editableNumberCell(
+                controller: _outsideEcController(
+                  barangay: (sourceRow['barangay'] ?? '').toString(),
+                  field: 'outsideEcPersonsCum',
+                  value: sourceRow['outsideEcPersonsCum'],
+                ),
+                width: colOutsideEcPersonsCum,
+                height: height,
+                onChanged: (value) {
+                  _updateOutsideEcValue(
+                    sourceRow,
+                    'outsideEcPersonsCum',
+                    value,
+                  );
+                },
+              )
+            : _cell(
+                text: outsideEcPersonsCum,
+                width: colOutsideEcPersonsCum,
+                height: height,
+                bold: bold,
+                color: color,
+                fontSize: 15,
+                alignment: Alignment.centerRight,
+                textAlign: TextAlign.right,
+              ),
+        editableOutsideEc && sourceRow != null
+            ? _editableNumberCell(
+                controller: _outsideEcController(
+                  barangay: (sourceRow['barangay'] ?? '').toString(),
+                  field: 'outsideEcPersonsNow',
+                  value: sourceRow['outsideEcPersonsNow'],
+                ),
+                width: colOutsideEcPersonsNow,
+                height: height,
+                onChanged: (value) {
+                  _updateOutsideEcValue(
+                    sourceRow,
+                    'outsideEcPersonsNow',
+                    value,
+                  );
+                },
+              )
+            : _cell(
+                text: outsideEcPersonsNow,
+                width: colOutsideEcPersonsNow,
+                height: height,
+                bold: bold,
+                color: color,
+                fontSize: 15,
+                alignment: Alignment.centerRight,
+                textAlign: TextAlign.right,
+              ),
         _cell(
           text: totalDisplacedFamiliesCum,
           width: colTotalDisplacedFamiliesCum,
@@ -2507,16 +2861,36 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
       final personsActualCum = (row['personsActualCum'] ?? 0).toString();
       final personsActualNow = (row['personsActualNow'] ?? 0).toString();
 
-      final totalDisplacedFamiliesCum =
-          ((row['insideEcFamiliesCum'] ?? 0) as int).toString();
-      final totalDisplacedFamiliesNow =
-          ((row['insideEcFamiliesNow'] ?? 0) as int).toString();
-      final totalDisplacedPersonsCum = ((row['personsActualCum'] ?? 0) as int)
-          .toString();
-      final totalDisplacedPersonsNow = ((row['personsActualNow'] ?? 0) as int)
-          .toString();
+      _recalculateTotalDisplaced(row);
 
-      final bool isFirstRowOfBarangay = barangay != lastBarangay;
+      final outsideEcFamiliesCum = _displayManualNumber(
+        row['outsideEcFamiliesCum'],
+      );
+      final outsideEcFamiliesNow = _displayManualNumber(
+        row['outsideEcFamiliesNow'],
+      );
+      final outsideEcPersonsCum = _displayManualNumber(
+        row['outsideEcPersonsCum'],
+      );
+      final outsideEcPersonsNow = _displayManualNumber(
+        row['outsideEcPersonsNow'],
+      );
+
+      final totalDisplacedFamiliesCum = _toIntValue(
+        row['totalDisplacedFamiliesCum'],
+      ).toString();
+      final totalDisplacedFamiliesNow = _toIntValue(
+        row['totalDisplacedFamiliesNow'],
+      ).toString();
+      final totalDisplacedPersonsCum = _toIntValue(
+        row['totalDisplacedPersonsCum'],
+      ).toString();
+      final totalDisplacedPersonsNow = _toIntValue(
+        row['totalDisplacedPersonsNow'],
+      ).toString();
+
+      final bool isFirstRowOfBarangay =
+          _barangayKey(barangay) != _barangayKey(lastBarangay);
 
       rows.add(
         _buildRow(
@@ -2536,10 +2910,14 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
           personsActualNow: personsActualNow,
           personsEstimateCum: '',
           personsEstimateNow: '',
-          outsideEcFamiliesCum: '',
-          outsideEcFamiliesNow: '',
-          outsideEcPersonsCum: '',
-          outsideEcPersonsNow: '',
+          outsideEcFamiliesCum: isFirstRowOfBarangay
+              ? outsideEcFamiliesCum
+              : '',
+          outsideEcFamiliesNow: isFirstRowOfBarangay
+              ? outsideEcFamiliesNow
+              : '',
+          outsideEcPersonsCum: isFirstRowOfBarangay ? outsideEcPersonsCum : '',
+          outsideEcPersonsNow: isFirstRowOfBarangay ? outsideEcPersonsNow : '',
           totalDisplacedFamiliesCum: totalDisplacedFamiliesCum,
           totalDisplacedFamiliesNow: totalDisplacedFamiliesNow,
           totalDisplacedPersonsCum: totalDisplacedPersonsCum,
@@ -2564,6 +2942,8 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
           totalInsideFemaleNow: (row['totalInsideFemaleNow'] ?? 0).toString(),
 
           color: Colors.white,
+          editableOutsideEc: isFirstRowOfBarangay,
+          sourceRow: row,
         ),
       );
 

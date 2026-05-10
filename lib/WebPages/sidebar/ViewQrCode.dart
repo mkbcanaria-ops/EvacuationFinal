@@ -93,6 +93,7 @@ class _ViewQrCodePageState extends State<ViewQrCodePage> {
       color: Colors.black,
       emptyColor: Colors.white,
     );
+
     final picData = await painter.toImageData(size);
     return picData!.buffer.asUint8List();
   }
@@ -100,143 +101,129 @@ class _ViewQrCodePageState extends State<ViewQrCodePage> {
   Future<Uint8List> _generatePdf() async {
     final pdf = pw.Document();
 
-    final pageFormat = PdfPageFormat(
-      3.375 * PdfPageFormat.inch,
-      4.5 * PdfPageFormat.inch,
-      marginAll: 0.08 * PdfPageFormat.inch,
-    );
+    /// Bond paper / short bond paper size
+    final bondPaperFormat = PdfPageFormat.letter;
 
-    final qrBytesForPdf = await _generateQrBytes(qrData, size: 135);
+    /// ID size
+    final idWidth = 3.375 * PdfPageFormat.inch;
+    final idHeight = 4.5 * PdfPageFormat.inch;
+
+    final qrBytesForPdf = await _generateQrBytes(qrData, size: 130);
 
     pdf.addPage(
       pw.Page(
-        pageFormat: pageFormat,
+        pageFormat: bondPaperFormat,
+        margin: pw.EdgeInsets.zero,
         build: (context) {
           return pw.Center(
             child: pw.Container(
-              width: 2.95 * PdfPageFormat.inch,
-              height: 3.95 * PdfPageFormat.inch,
+              width: idWidth,
+              height: idHeight,
               decoration: pw.BoxDecoration(
-                color: PdfColors.white,
-                borderRadius: pw.BorderRadius.circular(16),
+                borderRadius: pw.BorderRadius.circular(12),
                 border: pw.Border.all(
                   color: PdfColor.fromInt(0xFF0D743D),
-                  width: 1.3,
+                  width: 1.2,
                 ),
+                color: PdfColors.white,
               ),
               child: pw.Padding(
-                padding: const pw.EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 14,
-                ),
+                padding: const pw.EdgeInsets.all(10),
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.center,
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
-                    pw.Container(
-                      padding: const pw.EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: pw.BoxDecoration(
-                        color: PdfColor.fromInt(0xFFEAF5EE),
-                        borderRadius: pw.BorderRadius.circular(10),
-                      ),
-                      child: pw.Text(
-                        'MSWDO EVACUATION ID',
-                        textAlign: pw.TextAlign.center,
-                        style: pw.TextStyle(
-                          fontSize: 11,
-                          fontWeight: pw.FontWeight.bold,
+                    pw.Column(
+                      children: [
+                        pw.Text(
+                          'MSWDO EVACUATION ID',
+                          textAlign: pw.TextAlign.center,
+                          style: pw.TextStyle(
+                            fontSize: 12,
+                            fontWeight: pw.FontWeight.bold,
+                            color: PdfColor.fromInt(0xFF0D743D),
+                          ),
+                        ),
+                        pw.SizedBox(height: 2),
+                        pw.Divider(
+                          thickness: 0.7,
                           color: PdfColor.fromInt(0xFF0D743D),
                         ),
-                      ),
+                      ],
                     ),
-                    pw.SizedBox(height: 6),
-                    pw.Text(
-                      'Municipality of Santa',
-                      textAlign: pw.TextAlign.center,
-                      style: pw.TextStyle(
-                        fontSize: 8,
-                        color: PdfColors.grey700,
-                      ),
-                    ),
-
-                    pw.SizedBox(height: 18),
-
-                    // centered QR in printed ID
-                    pw.Align(
-                      alignment: pw.Alignment.center,
-                      child: pw.Container(
-                        width: 145,
-                        height: 145,
-                        padding: const pw.EdgeInsets.all(8),
-                        decoration: pw.BoxDecoration(
-                          color: PdfColors.white,
-                          borderRadius: pw.BorderRadius.circular(14),
-                          border: pw.Border.all(
-                            color: PdfColor.fromInt(0xFF0D743D),
-                            width: 0.9,
-                          ),
-                        ),
-                        child: pw.Center(
-                          child: pw.Image(
-                            pw.MemoryImage(qrBytesForPdf),
-                            fit: pw.BoxFit.contain,
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    pw.SizedBox(height: 14),
-
-                    pw.Text(
-                      fullName.toUpperCase(),
-                      textAlign: pw.TextAlign.center,
-                      style: pw.TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: pw.FontWeight.bold,
-                        color: PdfColor.fromInt(0xFF0D743D),
-                      ),
-                    ),
-                    pw.SizedBox(height: 4),
-                    pw.Text(
-                      'Head of the Family',
-                      style: const pw.TextStyle(
-                        fontSize: 9,
-                        color: PdfColors.black,
-                      ),
-                    ),
-                    pw.SizedBox(height: 10),
 
                     pw.Container(
-                      padding: const pw.EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
+                      width: 130,
+                      height: 130,
                       decoration: pw.BoxDecoration(
-                        color: PdfColors.grey100,
-                        borderRadius: pw.BorderRadius.circular(8),
+                        borderRadius: pw.BorderRadius.circular(10),
+                        border: pw.Border.all(
+                          color: PdfColor.fromInt(0xFF0D743D),
+                          width: 0.8,
+                        ),
                       ),
-                      child: pw.Text(
-                        'ID: $shortUid',
-                        style: pw.TextStyle(
-                          fontSize: 8,
-                          color: PdfColors.grey800,
+                      child: pw.Center(
+                        child: pw.Image(
+                          pw.MemoryImage(qrBytesForPdf),
+                          width: 120,
+                          height: 120,
                         ),
                       ),
                     ),
 
-                    pw.Spacer(),
+                    pw.Column(
+                      children: [
+                        pw.SizedBox(height: 6),
+                        pw.Text(
+                          fullName.toUpperCase(),
+                          textAlign: pw.TextAlign.center,
+                          maxLines: 2,
+                          style: pw.TextStyle(
+                            fontSize: 15,
+                            fontWeight: pw.FontWeight.bold,
+                            color: PdfColor.fromInt(0xFF0D743D),
+                          ),
+                        ),
+                        pw.SizedBox(height: 4),
+                        pw.Text(
+                          'Head of the Family',
+                          textAlign: pw.TextAlign.center,
+                          style: const pw.TextStyle(fontSize: 10),
+                        ),
+                      ],
+                    ),
 
-                    pw.Divider(thickness: 0.5, color: PdfColors.grey500),
-                    pw.SizedBox(height: 4),
-                    pw.Text(
-                      'Generated via MSWDO System',
-                      textAlign: pw.TextAlign.center,
-                      style: pw.TextStyle(
-                        fontSize: 7,
-                        color: PdfColors.grey600,
-                      ),
+                    pw.Column(
+                      children: [
+                        pw.Container(
+                          padding: const pw.EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: pw.BoxDecoration(
+                            color: PdfColors.grey100,
+                            borderRadius: pw.BorderRadius.circular(6),
+                          ),
+                          child: pw.Text(
+                            'ID: $shortUid',
+                            textAlign: pw.TextAlign.center,
+                            style: pw.TextStyle(
+                              fontSize: 7.5,
+                              color: PdfColors.grey800,
+                            ),
+                          ),
+                        ),
+                        pw.SizedBox(height: 5),
+                        pw.Divider(thickness: 0.4),
+                        pw.Text(
+                          'Generated via MSWDO System',
+                          textAlign: pw.TextAlign.center,
+                          style: pw.TextStyle(
+                            fontSize: 7,
+                            color: PdfColors.grey600,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -253,6 +240,7 @@ class _ViewQrCodePageState extends State<ViewQrCodePage> {
   Future<void> _printPage() async {
     try {
       final pdfBytes = await _generatePdf();
+
       await Printing.layoutPdf(
         onLayout: (_) async => pdfBytes,
         name: 'MSWDO_ID_${fullName.replaceAll(' ', '_')}.pdf',

@@ -23,6 +23,11 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   bool _isConfirmPasswordVisible = false;
   bool _isLoading = false;
 
+  static const Color primaryGreen = Color(0xFF0D743D);
+  static const Color darkGreen = Color(0xFF075C2E);
+  static const Color softGreen = Color(0xFFEAF7EF);
+  static const Color dangerRed = Color(0xFFD32F2F);
+
   @override
   void dispose() {
     _emailController.dispose();
@@ -36,17 +41,22 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     final newPass = _newPasswordController.text.trim();
     final confirmPass = _confirmPasswordController.text.trim();
 
-    // 1. Check empty fields
     if (email.isEmpty || newPass.isEmpty || confirmPass.isEmpty) {
-      return _showDialog("Missing Fields", "Please fill all fields", true);
+      return _showDialog(
+        "Missing Fields",
+        "Please complete all required fields.",
+        true,
+      );
     }
 
-    // 2. Check password match
     if (newPass != confirmPass) {
-      return _showDialog("Password Mismatch", "Passwords do not match", true);
+      return _showDialog(
+        "Password Mismatch",
+        "New password and confirm password do not match.",
+        true,
+      );
     }
 
-    // 3. Check strong password
     final passwordRegex = RegExp(
       r'^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[!@#\$&*~]).{8,}$',
     );
@@ -59,7 +69,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
             "• One uppercase letter\n"
             "• One lowercase letter\n"
             "• One number\n"
-            "• One special character (!@#\$&*~)\n",
+            "• One special character (!@#\$&*~)",
         true,
       );
     }
@@ -67,10 +77,8 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     setState(() => _isLoading = true);
 
     try {
-      // 4. Send OTP email
       await supabase.auth.resetPasswordForEmail(email);
 
-      // 5. Open token dialog
       final verified = await _showTokenDialog(email, newPass);
 
       if (verified) {
@@ -80,12 +88,12 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
           false,
         );
 
-        // Clear inputs
         _emailController.clear();
         _newPasswordController.clear();
         _confirmPasswordController.clear();
 
-        // Navigate to login
+        if (!mounted) return;
+
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const LoginPage()),
@@ -93,30 +101,33 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       } else {
         await _showDialog(
           "Verification Failed",
-          "The token is invalid or expired.",
+          "The verification code is invalid or expired.",
           true,
         );
       }
     } catch (e) {
       await _showDialog(
         "Error",
-        "Failed to send reset link.\n\n${e.toString()}",
+        "Failed to send verification code.\n\n${e.toString()}",
         true,
       );
     } finally {
+      if (!mounted) return;
       setState(() => _isLoading = false);
     }
   }
 
-  /// Token dialog with countdown
   Future<bool> _showTokenDialog(String email, String newPass) async {
     final TextEditingController tokenController = TextEditingController();
+
     bool verified = false;
+    bool timerStarted = false;
     int remainingTime = 120;
     Timer? timer;
 
     void startTimer(void Function(void Function()) setStateDialog) {
       timer?.cancel();
+
       timer = Timer.periodic(const Duration(seconds: 1), (t) {
         if (remainingTime > 0) {
           setStateDialog(() => remainingTime--);
@@ -127,7 +138,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     }
 
     String formatTime(int seconds) {
-      final minutes = (seconds ~/ 60).toString().padLeft(1, '0');
+      final minutes = (seconds ~/ 60).toString();
       final secs = (seconds % 60).toString().padLeft(2, '0');
       return "$minutes:$secs";
     }
@@ -138,104 +149,194 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
-            if (remainingTime == 120) startTimer(setStateDialog);
+            if (!timerStarted) {
+              timerStarted = true;
+              startTimer(setStateDialog);
+            }
 
-            return AlertDialog(
+            final bool isExpired = remainingTime <= 0;
+
+            return Dialog(
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 24,
+                vertical: 24,
+              ),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(24),
               ),
-              title: const Text(
-                "Email Verification",
-                textAlign: TextAlign.center,
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    "A 6-digit verification code has been sent to your email.\n\n"
-                    "Enter it below before it expires.",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 15, height: 1.4),
-                  ),
-                  const SizedBox(height: 15),
-                  TextField(
-                    controller: tokenController,
-                    textAlign: TextAlign.center,
-                    keyboardType: TextInputType.number,
-                    maxLength: 6,
-                    decoration: InputDecoration(
-                      hintText: "Enter 6-digit code",
-                      counterText: "",
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 18),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        height: 58,
+                        width: 58,
+                        decoration: BoxDecoration(
+                          color: softGreen,
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: const Icon(
+                          Icons.mark_email_read_outlined,
+                          color: primaryGreen,
+                          size: 30,
+                        ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    remainingTime > 0
-                        ? "Code expires in ${formatTime(remainingTime)}"
-                        : "Code expired",
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: remainingTime > 0
-                          ? Colors.grey[700]
-                          : Colors.redAccent,
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                Center(
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: remainingTime > 0
-                          ? const Color(0xFF0D743D)
-                          : Colors.grey,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                      const SizedBox(height: 16),
+                      Text(
+                        "Email Verification",
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.poppins(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black87,
+                        ),
                       ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 30,
-                        vertical: 12,
+                      const SizedBox(height: 8),
+                      Text(
+                        "A 6-digit verification code was sent to your email. Enter it below before it expires.",
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          height: 1.5,
+                          color: Colors.black54,
+                        ),
                       ),
-                    ),
-                    onPressed: remainingTime > 0
-                        ? () async {
-                            final token = tokenController.text.trim();
-                            try {
-                              // Verify token using Supabase
-                              await supabase.auth.verifyOTP(
-                                email: email,
-                                token: token,
-                                type: OtpType.recovery,
-                              );
+                      const SizedBox(height: 20),
+                      TextField(
+                        controller: tokenController,
+                        textAlign: TextAlign.center,
+                        keyboardType: TextInputType.number,
+                        maxLength: 6,
+                        style: GoogleFonts.poppins(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 8,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: "------",
+                          hintStyle: GoogleFonts.poppins(
+                            letterSpacing: 8,
+                            color: Colors.black26,
+                          ),
+                          counterText: "",
+                          filled: true,
+                          fillColor: const Color(0xFFF7F8FA),
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 14,
+                            horizontal: 16,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: const BorderSide(
+                              color: primaryGreen,
+                              width: 1.4,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isExpired
+                              ? Colors.red.withOpacity(0.08)
+                              : softGreen,
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                        child: Text(
+                          isExpired
+                              ? "Code expired"
+                              : "Code expires in ${formatTime(remainingTime)}",
+                          style: GoogleFonts.poppins(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: isExpired ? dangerRed : primaryGreen,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 22),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 46,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: isExpired
+                                ? Colors.grey
+                                : primaryGreen,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          onPressed: isExpired
+                              ? null
+                              : () async {
+                                  final token = tokenController.text.trim();
 
-                              // Update password
-                              await supabase.auth.updateUser(
-                                UserAttributes(password: newPass),
-                              );
+                                  if (token.length != 6) {
+                                    return;
+                                  }
 
-                              verified = true;
-                            } catch (e) {
-                              verified = false;
-                            }
-                            timer?.cancel();
-                            Navigator.of(context).pop();
-                          }
-                        : null,
-                    child: const Text(
-                      "Submit",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
+                                  try {
+                                    await supabase.auth.verifyOTP(
+                                      email: email,
+                                      token: token,
+                                      type: OtpType.recovery,
+                                    );
+
+                                    await supabase.auth.updateUser(
+                                      UserAttributes(password: newPass),
+                                    );
+
+                                    verified = true;
+                                  } catch (_) {
+                                    verified = false;
+                                  }
+
+                                  timer?.cancel();
+
+                                  if (!context.mounted) return;
+                                  Navigator.of(context).pop();
+                                },
+                          child: Text(
+                            "Verify Code",
+                            style: GoogleFonts.poppins(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 8),
+                      TextButton(
+                        onPressed: () {
+                          timer?.cancel();
+                          Navigator.of(context).pop();
+                        },
+                        child: Text(
+                          "Cancel",
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black54,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
+              ),
             );
           },
         );
@@ -243,70 +344,92 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     );
 
     timer?.cancel();
+    tokenController.dispose();
+
     return verified;
   }
 
   Future<void> _showDialog(String title, String message, bool isError) async {
+    final Color mainColor = isError ? dangerRed : primaryGreen;
+    final IconData icon = isError
+        ? Icons.error_outline_rounded
+        : Icons.check_circle_outline_rounded;
+
     return showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (context) {
-        return AlertDialog(
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 28,
+            vertical: 24,
+          ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(22),
           ),
-          title: Row(
-            children: [
-              Icon(
-                isError ? Icons.error_outline : Icons.check_circle_outline,
-                color: isError ? Colors.red : Colors.green,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: isError ? Colors.red : Colors.green,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 390),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 18),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    height: 58,
+                    width: 58,
+                    decoration: BoxDecoration(
+                      color: mainColor.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Icon(icon, color: mainColor, size: 32),
                   ),
-                ),
+                  const SizedBox(height: 14),
+                  Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: mainColor,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    message,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      height: 1.5,
+                      color: Colors.black54,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: mainColor,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: Text(
+                        "OK",
+                        style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-          content: Text(
-            message,
-            style: const TextStyle(
-              fontSize: 16,
-              color: Colors.black87,
-              height: 1.4,
             ),
           ),
-          actions: [
-            Center(
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: isError
-                      ? Colors.red.shade700
-                      : const Color(0xFF0D743D),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 25,
-                    vertical: 10,
-                  ),
-                ),
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text(
-                  "OK",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-          ],
         );
       },
     );
@@ -315,41 +438,280 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   Widget _buildTextField({
     required TextEditingController controller,
     required String label,
+    required String hint,
     required IconData icon,
     required bool isPassword,
+    TextInputType keyboardType = TextInputType.text,
     bool? isVisible,
     VoidCallback? onVisibilityToggle,
   }) {
     return TextField(
       controller: controller,
       obscureText: isPassword ? !(isVisible ?? false) : false,
-      style: GoogleFonts.poppins(fontSize: 13),
+      keyboardType: keyboardType,
+      style: GoogleFonts.poppins(
+        fontSize: 13.5,
+        fontWeight: FontWeight.w500,
+        color: Colors.black87,
+      ),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: GoogleFonts.poppins(fontSize: 12),
-        prefixIcon: Icon(icon, color: const Color(0xFF0D743D), size: 18),
+        hintText: hint,
+        labelStyle: GoogleFonts.poppins(
+          fontSize: 12.5,
+          color: Colors.black54,
+          fontWeight: FontWeight.w500,
+        ),
+        hintStyle: GoogleFonts.poppins(fontSize: 12.5, color: Colors.black38),
+        prefixIcon: Container(
+          margin: const EdgeInsets.only(left: 10, right: 8),
+          child: Icon(icon, color: primaryGreen, size: 20),
+        ),
+        prefixIconConstraints: const BoxConstraints(
+          minWidth: 44,
+          minHeight: 44,
+        ),
         suffixIcon: isPassword
             ? IconButton(
+                splashRadius: 20,
                 icon: Icon(
                   (isVisible ?? false)
-                      ? Icons.visibility
-                      : Icons.visibility_off,
-                  color: Colors.grey,
-                  size: 18,
+                      ? Icons.visibility_rounded
+                      : Icons.visibility_off_rounded,
+                  color: Colors.black45,
+                  size: 20,
                 ),
                 onPressed: onVisibilityToggle,
               )
             : null,
         filled: true,
-        fillColor: Colors.white.withOpacity(0.9),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide.none,
-        ),
+        fillColor: const Color(0xFFF7F8FA),
         contentPadding: const EdgeInsets.symmetric(
-          vertical: 12,
+          vertical: 15,
           horizontal: 14,
         ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: Colors.black.withOpacity(0.05)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: primaryGreen, width: 1.4),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPasswordHint() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: softGreen,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: primaryGreen.withOpacity(0.10)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.info_outline_rounded, color: primaryGreen, size: 19),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              "Use at least 8 characters with uppercase, lowercase, number, and special character.",
+              style: GoogleFonts.poppins(
+                fontSize: 11.5,
+                height: 1.45,
+                color: darkGreen,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLogoHeader() {
+    return Column(
+      children: [
+        Container(
+          height: 92,
+          width: 92,
+          padding: const EdgeInsets.all(7),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: primaryGreen.withOpacity(0.16),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: ClipOval(
+            child: Image.asset('assets/images/Logo2.jpg', fit: BoxFit.cover),
+          ),
+        ),
+        const SizedBox(height: 18),
+        Text(
+          "Reset Password",
+          textAlign: TextAlign.center,
+          style: GoogleFonts.poppins(
+            fontSize: 24,
+            fontWeight: FontWeight.w800,
+            color: primaryGreen,
+            letterSpacing: -0.4,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          "Enter your email and new password to continue.",
+          textAlign: TextAlign.center,
+          style: GoogleFonts.poppins(
+            fontSize: 12.5,
+            height: 1.4,
+            color: Colors.black54,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildResetCard(double screenWidth) {
+    final bool isSmall = screenWidth < 600;
+
+    return Container(
+      width: isSmall ? screenWidth * 0.90 : 430,
+      padding: EdgeInsets.symmetric(
+        horizontal: isSmall ? 22 : 30,
+        vertical: isSmall ? 24 : 30,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.94),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: Colors.white.withOpacity(0.55)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.24),
+            blurRadius: 28,
+            offset: const Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildLogoHeader(),
+          const SizedBox(height: 26),
+          _buildTextField(
+            controller: _emailController,
+            label: "Email Address",
+            hint: "Enter your email",
+            icon: Icons.email_outlined,
+            keyboardType: TextInputType.emailAddress,
+            isPassword: false,
+          ),
+          const SizedBox(height: 14),
+          _buildTextField(
+            controller: _newPasswordController,
+            label: "New Password",
+            hint: "Enter new password",
+            icon: Icons.lock_outline_rounded,
+            isPassword: true,
+            isVisible: _isPasswordVisible,
+            onVisibilityToggle: () {
+              setState(() {
+                _isPasswordVisible = !_isPasswordVisible;
+              });
+            },
+          ),
+          const SizedBox(height: 14),
+          _buildTextField(
+            controller: _confirmPasswordController,
+            label: "Confirm Password",
+            hint: "Confirm new password",
+            icon: Icons.lock_outline_rounded,
+            isPassword: true,
+            isVisible: _isConfirmPasswordVisible,
+            onVisibilityToggle: () {
+              setState(() {
+                _isConfirmPasswordVisible = !_isConfirmPasswordVisible;
+              });
+            },
+          ),
+          const SizedBox(height: 14),
+          _buildPasswordHint(),
+          const SizedBox(height: 22),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton(
+              onPressed: _isLoading ? null : _sendResetLink,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryGreen,
+                disabledBackgroundColor: primaryGreen.withOpacity(0.55),
+                elevation: 0,
+                shadowColor: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              child: _isLoading
+                  ? const SizedBox(
+                      height: 21,
+                      width: 21,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2.4,
+                      ),
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.verified_user_outlined,
+                          size: 19,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          "Reset Password",
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextButton.icon(
+            onPressed: _isLoading
+                ? null
+                : () {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const LoginPage(),
+                      ),
+                    );
+                  },
+            icon: const Icon(Icons.arrow_back_rounded, size: 18),
+            label: Text(
+              "Back to Login",
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            style: TextButton.styleFrom(foregroundColor: primaryGreen),
+          ),
+        ],
       ),
     );
   }
@@ -357,111 +719,34 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+
     return Scaffold(
       body: Stack(
         fit: StackFit.expand,
         children: [
           Image.asset('assets/images/Mainpic1.jpg', fit: BoxFit.cover),
-          Container(color: Colors.black.withOpacity(0.6)),
-          Align(
-            alignment: Alignment.center,
-            child: Container(
-              width: screenWidth < 600
-                  ? screenWidth * 0.85
-                  : screenWidth * 0.38,
-              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.85),
-                borderRadius: BorderRadius.circular(22),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.25),
-                    blurRadius: 18,
-                    offset: const Offset(0, 8),
-                  ),
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.black.withOpacity(0.72),
+                  primaryGreen.withOpacity(0.45),
+                  Colors.black.withOpacity(0.72),
                 ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
+            ),
+          ),
+          SafeArea(
+            child: Center(
               child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    Image.asset(
-                      'assets/images/Logo2.jpg',
-                      height: 100,
-                      width: 100,
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      "Reset Password",
-                      style: GoogleFonts.poppins(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: const Color(0xFF0D743D),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    _buildTextField(
-                      controller: _emailController,
-                      label: "Email",
-                      icon: Icons.email_outlined,
-                      isPassword: false,
-                    ),
-                    const SizedBox(height: 12),
-                    _buildTextField(
-                      controller: _newPasswordController,
-                      label: "New Password",
-                      icon: Icons.lock_outline,
-                      isPassword: true,
-                      isVisible: _isPasswordVisible,
-                      onVisibilityToggle: () {
-                        setState(() {
-                          _isPasswordVisible = !_isPasswordVisible;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    _buildTextField(
-                      controller: _confirmPasswordController,
-                      label: "Confirm Password",
-                      icon: Icons.lock_outline,
-                      isPassword: true,
-                      isVisible: _isConfirmPasswordVisible,
-                      onVisibilityToggle: () {
-                        setState(() {
-                          _isConfirmPasswordVisible =
-                              !_isConfirmPasswordVisible;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : _sendResetLink,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0D743D),
-                          elevation: 3,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                        ),
-                        child: _isLoading
-                            ? const CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              )
-                            : Text(
-                                "Reset Password",
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white, // ← Make text white
-                                ),
-                              ),
-                      ),
-                    ),
-                  ],
+                padding: EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: screenHeight < 700 ? 18 : 28,
                 ),
+                child: _buildResetCard(screenWidth),
               ),
             ),
           ),

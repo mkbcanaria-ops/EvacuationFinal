@@ -67,101 +67,113 @@ class _AppManualViewQrPageState extends State<AppManualViewQrPage> {
   Future<Uint8List> _generatePdf() async {
     final pdf = pw.Document();
 
-    final pageFormat = PdfPageFormat(
-      3.375 * PdfPageFormat.inch,
-      4.5 * PdfPageFormat.inch,
-      marginAll: 0.1 * PdfPageFormat.inch,
-    );
+    /// Bond paper / short bond paper size
+    final bondPaperFormat = PdfPageFormat.letter;
+
+    /// Same ID size as the previous code
+    final idWidth = 3.375 * PdfPageFormat.inch;
+    final idHeight = 4.5 * PdfPageFormat.inch;
 
     final qrBytesForPdf = await _generateQrBytes(qrData, size: 130);
 
     pdf.addPage(
       pw.Page(
-        pageFormat: pageFormat,
+        pageFormat: bondPaperFormat,
+        margin: pw.EdgeInsets.zero,
         build: (context) {
-          return pw.Container(
-            decoration: pw.BoxDecoration(
-              borderRadius: pw.BorderRadius.circular(12),
-              border: pw.Border.all(
-                color: PdfColor.fromInt(0xFF0D743D),
-                width: 1.2,
+          return pw.Center(
+            child: pw.Container(
+              width: idWidth,
+              height: idHeight,
+              decoration: pw.BoxDecoration(
+                borderRadius: pw.BorderRadius.circular(12),
+                border: pw.Border.all(
+                  color: PdfColor.fromInt(0xFF0D743D),
+                  width: 1.2,
+                ),
+                color: PdfColors.white,
               ),
-              color: PdfColors.white,
-            ),
-            child: pw.Padding(
-              padding: const pw.EdgeInsets.all(10),
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.center,
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Column(
-                    children: [
-                      pw.Text(
-                        'MSWDO EVACUATION ID',
-                        textAlign: pw.TextAlign.center,
-                        style: pw.TextStyle(
-                          fontSize: 12,
-                          fontWeight: pw.FontWeight.bold,
+              child: pw.Padding(
+                padding: const pw.EdgeInsets.all(10),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.center,
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Column(
+                      children: [
+                        pw.Text(
+                          'MSWDO EVACUATION ID',
+                          textAlign: pw.TextAlign.center,
+                          style: pw.TextStyle(
+                            fontSize: 12,
+                            fontWeight: pw.FontWeight.bold,
+                            color: PdfColor.fromInt(0xFF0D743D),
+                          ),
+                        ),
+                        pw.SizedBox(height: 2),
+                        pw.Divider(
+                          thickness: 0.7,
                           color: PdfColor.fromInt(0xFF0D743D),
                         ),
-                      ),
-                      pw.SizedBox(height: 2),
-                      pw.Divider(
-                        thickness: 0.7,
-                        color: PdfColor.fromInt(0xFF0D743D),
-                      ),
-                    ],
-                  ),
-
-                  pw.Container(
-                    width: 130,
-                    height: 130,
-                    decoration: pw.BoxDecoration(
-                      borderRadius: pw.BorderRadius.circular(10),
-                      border: pw.Border.all(
-                        color: PdfColor.fromInt(0xFF0D743D),
-                        width: 0.8,
-                      ),
+                      ],
                     ),
-                    child: pw.Center(
-                      child: pw.Image(pw.MemoryImage(qrBytesForPdf)),
-                    ),
-                  ),
 
-                  pw.Column(
-                    children: [
-                      pw.SizedBox(height: 6),
-                      pw.Text(
-                        fullName.toUpperCase(),
-                        textAlign: pw.TextAlign.center,
-                        style: pw.TextStyle(
-                          fontSize: 15,
-                          fontWeight: pw.FontWeight.bold,
+                    pw.Container(
+                      width: 130,
+                      height: 130,
+                      decoration: pw.BoxDecoration(
+                        borderRadius: pw.BorderRadius.circular(10),
+                        border: pw.Border.all(
                           color: PdfColor.fromInt(0xFF0D743D),
+                          width: 0.8,
                         ),
                       ),
-                      pw.SizedBox(height: 4),
-                      pw.Text(
-                        'Head of the Family',
-                        style: pw.TextStyle(fontSize: 10),
+                      child: pw.Center(
+                        child: pw.Image(
+                          pw.MemoryImage(qrBytesForPdf),
+                          width: 120,
+                          height: 120,
+                        ),
                       ),
-                    ],
-                  ),
+                    ),
 
-                  pw.Column(
-                    children: [
-                      pw.Divider(thickness: 0.4),
-                      pw.Text(
-                        'Generated via MSWDO System',
-                        textAlign: pw.TextAlign.center,
-                        style: pw.TextStyle(
-                          fontSize: 7,
-                          color: PdfColors.grey600,
+                    pw.Column(
+                      children: [
+                        pw.SizedBox(height: 6),
+                        pw.Text(
+                          fullName.toUpperCase(),
+                          textAlign: pw.TextAlign.center,
+                          maxLines: 2,
+                          style: pw.TextStyle(
+                            fontSize: 15,
+                            fontWeight: pw.FontWeight.bold,
+                            color: PdfColor.fromInt(0xFF0D743D),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                        pw.SizedBox(height: 4),
+                        pw.Text(
+                          'Head of the Family',
+                          textAlign: pw.TextAlign.center,
+                          style: pw.TextStyle(fontSize: 10),
+                        ),
+                      ],
+                    ),
+
+                    pw.Column(
+                      children: [
+                        pw.Divider(thickness: 0.4),
+                        pw.Text(
+                          'Generated via MSWDO System',
+                          textAlign: pw.TextAlign.center,
+                          style: pw.TextStyle(
+                            fontSize: 7,
+                            color: PdfColors.grey600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           );

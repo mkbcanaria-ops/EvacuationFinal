@@ -28,6 +28,13 @@ class _WLandingPageState extends State<WLandingPage> {
     );
   }
 
+  void openEvacuationMap() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const EvacuationMapView()),
+    );
+  }
+
   Future<void> _openWeatherTracker() async {
     final opened = await launchUrl(
       _weatherTrackerUrl,
@@ -53,10 +60,10 @@ class _WLandingPageState extends State<WLandingPage> {
 
   IconData _featureIcon(String title) {
     switch (title) {
-      case 'Evacuation Routes':
-        return Icons.alt_route_rounded;
-      case 'Emergency Shelters':
-        return Icons.home_work_rounded;
+      case 'Evacuation Sites':
+        return Icons.location_on_rounded;
+      case 'Emergency Hotlines':
+        return Icons.call_rounded;
       case 'Alerts & Safety Tips':
         return Icons.notifications_active_rounded;
       default:
@@ -66,10 +73,10 @@ class _WLandingPageState extends State<WLandingPage> {
 
   String _featureDescription(String title) {
     switch (title) {
-      case 'Evacuation Routes':
-        return 'Access safer directions and evacuation guidance during emergency situations.';
-      case 'Emergency Shelters':
-        return 'Find designated shelters and temporary safe areas for residents.';
+      case 'Evacuation Sites':
+        return 'View pinned evacuation centers with location details, occupancy, and current status.';
+      case 'Emergency Hotlines':
+        return 'Access important emergency contact information for faster assistance and response.';
       case 'Alerts & Safety Tips':
         return 'Stay informed with announcements, reminders, and safety guidance.';
       default:
@@ -179,7 +186,13 @@ class _WLandingPageState extends State<WLandingPage> {
     required bool isMobile,
   }) {
     return GestureDetector(
-      onTap: () => openFullImage(imagePath),
+      onTap: () {
+        if (title == 'Evacuation Sites') {
+          openEvacuationMap();
+        } else {
+          openFullImage(imagePath);
+        }
+      },
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(isMobile ? 22 : 26),
@@ -241,7 +254,7 @@ class _WLandingPageState extends State<WLandingPage> {
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
-                    'Tap to view',
+                    title == 'Evacuation Sites' ? 'Open map' : 'Tap to view',
                     style: GoogleFonts.poppins(
                       fontSize: 10.5,
                       fontWeight: FontWeight.w600,
@@ -421,7 +434,7 @@ class _WLandingPageState extends State<WLandingPage> {
                                   ),
                                   SizedBox(height: isSmallPhone ? 12 : 16),
                                   Text(
-                                    'Your safety matters. Stay updated with real-time alerts, evacuation routes, and essential resources designed to keep every resident informed and ready during emergencies.',
+                                    'Your safety matters. Stay updated with real-time alerts, evacuation sites, and essential resources designed to keep every resident informed and ready during emergencies.',
                                     maxLines: isSmallPhone ? 5 : null,
                                     overflow: isSmallPhone
                                         ? TextOverflow.ellipsis
@@ -1005,13 +1018,13 @@ class _WLandingPageState extends State<WLandingPage> {
                       ),
                       children: [
                         _buildFeatureCard(
-                          imagePath: 'assets/images/Mainpic1.jpg',
-                          title: 'Evacuation Routes',
+                          imagePath: 'assets/images/map.jpg',
+                          title: 'Evacuation Sites',
                           isMobile: isMobile,
                         ),
                         _buildFeatureCard(
                           imagePath: 'assets/images/Mainpic2.jpg',
-                          title: 'Emergency Shelters',
+                          title: 'Emergency Hotlines',
                           isMobile: isMobile,
                         ),
                         _buildFeatureCard(
@@ -1046,6 +1059,413 @@ class _WLandingPageState extends State<WLandingPage> {
           ),
         );
       },
+    );
+  }
+}
+
+class EvacuationSite {
+  final String name;
+  final String imagePath;
+  final String address;
+  final String occupancy;
+  final String status;
+  final double x;
+  final double y;
+
+  const EvacuationSite({
+    required this.name,
+    required this.imagePath,
+    required this.address,
+    required this.occupancy,
+    required this.status,
+    required this.x,
+    required this.y,
+  });
+}
+
+class EvacuationMapView extends StatelessWidget {
+  const EvacuationMapView({super.key});
+
+  static const double _mapAspectRatio = 1280 / 1154;
+
+  static const List<EvacuationSite> _sites = [
+    EvacuationSite(
+      name: 'Santa National High School',
+      imagePath: 'assets/images/SantaNational.jpg',
+      address: 'Marcos District, Santa, Ilocos Sur',
+      occupancy: 'To be updated',
+      status: 'Available',
+      x: 0.695,
+      y: 0.112,
+    ),
+    EvacuationSite(
+      name: 'Santa High School',
+      imagePath: 'assets/images/SantaHigh.jpeg',
+      address: 'Quirino District, Santa, Ilocos Sur',
+      occupancy: 'To be updated',
+      status: 'Available',
+      x: 0.255,
+      y: 0.582,
+    ),
+    EvacuationSite(
+      name: 'RHU',
+      imagePath: 'assets/images/RHU.jpg',
+      address: 'Santa Rural Health Unit, Santa, Ilocos Sur',
+      occupancy: 'To be updated',
+      status: 'Available',
+      x: 0.447,
+      y: 0.632,
+    ),
+    EvacuationSite(
+      name: "Santa Farmer's Multipurpose Building",
+      imagePath: 'assets/images/Farmers.jpg',
+      address: "Santa Farmer's Multipurpose Building",
+      occupancy: 'To be updated',
+      status: 'Available',
+      x: 0.458,
+      y: 0.748,
+    ),
+    EvacuationSite(
+      name: 'Municipal Evacuation Center, Magsaysay',
+      imagePath: 'assets/images/Magsaysay.jpg',
+      address: 'Municipal Evacuation Center, Magsaysay',
+      occupancy: 'To be updated',
+      status: 'Available',
+      x: 0.478,
+      y: 0.934,
+    ),
+  ];
+
+  void _showSiteDetails(BuildContext context, EvacuationSite site) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return SafeArea(
+          child: Container(
+            margin: const EdgeInsets.all(14),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(26),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.18),
+                  blurRadius: 24,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 48,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: AspectRatio(
+                      aspectRatio: 16 / 9,
+                      child: Image.asset(
+                        site.imagePath,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: const Color(0xFFF5FAF7),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(
+                                  Icons.image_not_supported_outlined,
+                                  color: Color(0xFF0D743D),
+                                  size: 38,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Image not found',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: const Color(0xFF0D743D),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0D743D).withOpacity(0.10),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(
+                          Icons.location_on_rounded,
+                          color: Color(0xFF0D743D),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          site.name,
+                          style: GoogleFonts.poppins(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF0D743D),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  _detailTile(
+                    icon: Icons.place_outlined,
+                    label: 'Address',
+                    value: site.address,
+                  ),
+                  _detailTile(
+                    icon: Icons.groups_rounded,
+                    label: 'Occupancy',
+                    value: site.occupancy,
+                  ),
+                  _detailTile(
+                    icon: Icons.verified_outlined,
+                    label: 'Status',
+                    value: site.status,
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(
+                        Icons.check_rounded,
+                        color: Colors.white,
+                      ),
+                      label: Text(
+                        'Okay',
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0D743D),
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  static Widget _detailTile({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5FAF7),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF0D743D).withOpacity(0.08)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: const Color(0xFF0D743D), size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: RichText(
+              text: TextSpan(
+                style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  color: Colors.black87,
+                  height: 1.45,
+                ),
+                children: [
+                  TextSpan(
+                    text: '$label: ',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  TextSpan(text: value),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMapPin(BuildContext context, EvacuationSite site) {
+    return GestureDetector(
+      onTap: () => _showSiteDetails(context, site),
+      child: Container(
+        width: 140,
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.18),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withOpacity(0.18)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.14),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.location_on_rounded,
+                color: const Color(0xFFE53935),
+                size: 32,
+                shadows: [
+                  Shadow(
+                    color: Colors.black.withOpacity(0.40),
+                    blurRadius: 7,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 2),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.28),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                site.name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.poppins(
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                  height: 1.1,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMap({
+    required BuildContext context,
+    required double mapWidth,
+    required double mapHeight,
+  }) {
+    return SizedBox(
+      width: mapWidth,
+      height: mapHeight,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(18),
+              child: Image.asset('assets/images/map.jpg', fit: BoxFit.fill),
+            ),
+          ),
+          ..._sites.map((site) {
+            return Positioned(
+              left: (mapWidth * site.x) - 70,
+              top: (mapHeight * site.y) - 40,
+              child: _buildMapPin(context, site),
+            );
+          }).toList(),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF06160E),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF06160E),
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: Text(
+          'Evacuation Sites Map',
+          style: GoogleFonts.poppins(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+            fontSize: 16,
+          ),
+        ),
+        centerTitle: true,
+      ),
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            double mapWidth = constraints.maxWidth - 24;
+            double mapHeight = mapWidth / _mapAspectRatio;
+
+            if (mapHeight > constraints.maxHeight - 24) {
+              mapHeight = constraints.maxHeight - 24;
+              mapWidth = mapHeight * _mapAspectRatio;
+            }
+
+            return Stack(
+              children: [
+                Positioned.fill(
+                  child: InteractiveViewer(
+                    minScale: 1,
+                    maxScale: 5,
+                    boundaryMargin: const EdgeInsets.all(120),
+                    child: Center(
+                      child: _buildMap(
+                        context: context,
+                        mapWidth: mapWidth,
+                        mapHeight: mapHeight,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
     );
   }
 }

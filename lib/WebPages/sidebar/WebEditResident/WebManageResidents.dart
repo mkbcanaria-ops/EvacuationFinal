@@ -108,12 +108,16 @@ class _WebManageResidentsPageState extends State<WebManageResidentsPage> {
                       ),
                     ),
                     onPressed: () => Navigator.pop(context),
-                    child: Text(
-                      'OK',
-                      style: GoogleFonts.poppins(
-                        fontSize: 11.5,
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        'OK',
+                        maxLines: 1,
+                        style: GoogleFonts.poppins(
+                          fontSize: 11.5,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ),
@@ -187,12 +191,16 @@ class _WebManageResidentsPageState extends State<WebManageResidentsPage> {
                         borderRadius: BorderRadius.circular(9),
                       ),
                     ),
-                    child: Text(
-                      'OK',
-                      style: GoogleFonts.poppins(
-                        fontSize: 11.5,
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        'OK',
+                        maxLines: 1,
+                        style: GoogleFonts.poppins(
+                          fontSize: 11.5,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ),
@@ -267,12 +275,16 @@ class _WebManageResidentsPageState extends State<WebManageResidentsPage> {
                           ),
                         ),
                         onPressed: () => Navigator.pop(context, false),
-                        child: Text(
-                          'Cancel',
-                          style: GoogleFonts.poppins(
-                            fontSize: 11.5,
-                            color: Colors.black87,
-                            fontWeight: FontWeight.w600,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'Cancel',
+                            maxLines: 1,
+                            style: GoogleFonts.poppins(
+                              fontSize: 11.5,
+                              color: Colors.black87,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ),
@@ -289,12 +301,16 @@ class _WebManageResidentsPageState extends State<WebManageResidentsPage> {
                           ),
                         ),
                         onPressed: () => Navigator.pop(context, true),
-                        child: Text(
-                          'Archive',
-                          style: GoogleFonts.poppins(
-                            fontSize: 11.5,
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'Archive',
+                            maxLines: 1,
+                            style: GoogleFonts.poppins(
+                              fontSize: 11.5,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ),
@@ -328,6 +344,7 @@ class _WebManageResidentsPageState extends State<WebManageResidentsPage> {
 
   Future<void> _fetchResidents() async {
     setState(() => _isLoading = true);
+
     try {
       final response = await supabase
           .from('Registration_Table')
@@ -355,6 +372,7 @@ class _WebManageResidentsPageState extends State<WebManageResidentsPage> {
 
   void _filterResidents() {
     final query = _searchController.text.toLowerCase().trim();
+
     if (query.isEmpty) {
       setState(() => _filteredResidents = _residents);
       return;
@@ -367,7 +385,9 @@ class _WebManageResidentsPageState extends State<WebManageResidentsPage> {
                 .replaceAll(RegExp(r'\s+'), ' ')
                 .toLowerCase()
                 .trim();
+
         final uid = resident['UID'].toString().toLowerCase();
+
         return fullName.contains(query) || uid.contains(query);
       }).toList();
     });
@@ -375,9 +395,11 @@ class _WebManageResidentsPageState extends State<WebManageResidentsPage> {
 
   String? _getPublicImageUrl(String? path) {
     if (path == null || path.isEmpty) return null;
+
     if (path.startsWith('http://') || path.startsWith('https://')) {
       return path;
     }
+
     final publicUrl = supabase.storage.from('headimage').getPublicUrl(path);
     return publicUrl;
   }
@@ -391,6 +413,8 @@ class _WebManageResidentsPageState extends State<WebManageResidentsPage> {
         child: GestureDetector(
           onTap: () => Navigator.pop(context),
           child: InteractiveViewer(
+            minScale: 0.7,
+            maxScale: 4,
             child: Image.network(
               imageUrl,
               fit: BoxFit.contain,
@@ -573,14 +597,32 @@ class _WebManageResidentsPageState extends State<WebManageResidentsPage> {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final bool isWide = screenWidth > 900;
+    final bool isPhone = screenWidth < 620;
 
     int crossAxisCount = 2;
+
     if (screenWidth > 1500) {
       crossAxisCount = 5;
     } else if (screenWidth > 1180) {
       crossAxisCount = 4;
     } else if (screenWidth > 760) {
       crossAxisCount = 3;
+    } else {
+      crossAxisCount = 2;
+    }
+
+    double cardAspectRatio = 0.68;
+
+    if (screenWidth > 1500) {
+      cardAspectRatio = 0.78;
+    } else if (screenWidth > 1180) {
+      cardAspectRatio = 0.76;
+    } else if (screenWidth > 760) {
+      cardAspectRatio = 0.82;
+    } else if (screenWidth > 620) {
+      cardAspectRatio = 0.78;
+    } else {
+      cardAspectRatio = 0.68;
     }
 
     return Scaffold(
@@ -596,7 +638,7 @@ class _WebManageResidentsPageState extends State<WebManageResidentsPage> {
           'Manage Residents',
           style: GoogleFonts.poppins(
             fontWeight: FontWeight.w700,
-            fontSize: 19,
+            fontSize: isPhone ? 17 : 19,
             color: Colors.white,
           ),
         ),
@@ -611,22 +653,36 @@ class _WebManageResidentsPageState extends State<WebManageResidentsPage> {
           );
         },
         icon: const Icon(Icons.add, color: Colors.white),
-        label: Text(
-          'Add Resident',
-          style: GoogleFonts.poppins(
-            color: Colors.white,
-            fontWeight: FontWeight.w600,
+        label: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            'Add Resident',
+            maxLines: 1,
+            style: GoogleFonts.poppins(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       ),
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
+            padding: EdgeInsets.fromLTRB(
+              isPhone ? 12 : 18,
+              14,
+              isPhone ? 12 : 18,
+              0,
+            ),
             child: _buildTopBanner(isWide),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
+            padding: EdgeInsets.fromLTRB(
+              isPhone ? 12 : 18,
+              14,
+              isPhone ? 12 : 18,
+              0,
+            ),
             child: _buildTopControls(isWide),
           ),
           const SizedBox(height: 14),
@@ -690,19 +746,18 @@ class _WebManageResidentsPageState extends State<WebManageResidentsPage> {
                     color: primaryGreen,
                     onRefresh: _fetchResidents,
                     child: GridView.builder(
-                      padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
+                      padding: EdgeInsets.fromLTRB(
+                        isPhone ? 10 : 18,
+                        0,
+                        isPhone ? 10 : 18,
+                        24,
+                      ),
                       itemCount: _filteredResidents.length,
                       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: crossAxisCount,
-                        crossAxisSpacing: 18,
-                        mainAxisSpacing: 18,
-                        childAspectRatio: screenWidth > 1500
-                            ? 0.78
-                            : screenWidth > 1180
-                            ? 0.76
-                            : screenWidth > 760
-                            ? 0.82
-                            : 0.88,
+                        crossAxisSpacing: isPhone ? 10 : 18,
+                        mainAxisSpacing: isPhone ? 10 : 18,
+                        childAspectRatio: cardAspectRatio,
                       ),
                       itemBuilder: (context, index) {
                         final resident = _filteredResidents[index];
@@ -719,6 +774,7 @@ class _WebManageResidentsPageState extends State<WebManageResidentsPage> {
                           fullName: fullName,
                           date: date.toString(),
                           imageUrl: imageUrl,
+                          isPhone: isPhone,
                         );
                       },
                     ),
@@ -904,7 +960,7 @@ class _WebManageResidentsPageState extends State<WebManageResidentsPage> {
         style: ElevatedButton.styleFrom(
           elevation: 0,
           backgroundColor: Colors.redAccent,
-          padding: const EdgeInsets.symmetric(horizontal: 18),
+          padding: const EdgeInsets.symmetric(horizontal: 14),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
@@ -915,14 +971,120 @@ class _WebManageResidentsPageState extends State<WebManageResidentsPage> {
             MaterialPageRoute(builder: (_) => const WebArchiveUsers()),
           );
         },
-        icon: const Icon(Icons.archive_outlined, color: Colors.white),
-        label: Text(
-          'Archive Users',
-          style: GoogleFonts.poppins(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
+        icon: const Icon(Icons.archive_outlined, color: Colors.white, size: 19),
+        label: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            'Archive Users',
+            maxLines: 1,
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAdaptiveActionButton({
+    required String label,
+    required Color backgroundColor,
+    required VoidCallback onPressed,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool verySmall = constraints.maxWidth < 95;
+
+        return SizedBox(
+          height: 38,
+          width: double.infinity,
+          child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              elevation: 0,
+              backgroundColor: backgroundColor,
+              padding: EdgeInsets.symmetric(
+                horizontal: verySmall ? 4 : 8,
+                vertical: 0,
+              ),
+              minimumSize: const Size(0, 38),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            onPressed: onPressed,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.visible,
+                style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontSize: verySmall ? 11 : 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildAdaptiveResidentImage({
+    required String? imageUrl,
+    required bool isPhone,
+  }) {
+    return GestureDetector(
+      onTap: () {
+        if (imageUrl != null) {
+          _showFullImage(imageUrl);
+        }
+      },
+      child: Container(
+        width: double.infinity,
+        height: double.infinity,
+        padding: EdgeInsets.all(isPhone ? 6 : 10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(isPhone ? 16 : 20),
+          gradient: const LinearGradient(
+            colors: [Color(0xFFF8FBF9), Color(0xFFF1F7F4)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(isPhone ? 12 : 16),
+          child: imageUrl != null
+              ? Image.network(
+                  imageUrl,
+                  width: double.infinity,
+                  height: double.infinity,
+                  fit: BoxFit.cover,
+                  alignment: Alignment.center,
+                  filterQuality: FilterQuality.medium,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+
+                    return Center(
+                      child: SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          color: primaryGreen,
+                        ),
+                      ),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) =>
+                      _buildImagePlaceholder(),
+                )
+              : _buildImagePlaceholder(),
         ),
       ),
     );
@@ -933,11 +1095,12 @@ class _WebManageResidentsPageState extends State<WebManageResidentsPage> {
     required String fullName,
     required String date,
     required String? imageUrl,
+    required bool isPhone,
   }) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(isPhone ? 18 : 24),
         border: Border.all(color: cardBorder),
         boxShadow: [
           BoxShadow(
@@ -948,48 +1111,26 @@ class _WebManageResidentsPageState extends State<WebManageResidentsPage> {
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(isPhone ? 10 : 16),
         child: Column(
           children: [
             Expanded(
-              child: GestureDetector(
-                onTap: () {
-                  if (imageUrl != null) {
-                    _showFullImage(imageUrl);
-                  }
-                },
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFF8FBF9), Color(0xFFF1F7F4)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: imageUrl != null
-                        ? Image.network(
-                            imageUrl,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) =>
-                                _buildImagePlaceholder(),
-                          )
-                        : _buildImagePlaceholder(),
-                  ),
-                ),
+              flex: isPhone ? 6 : 6,
+              child: _buildAdaptiveResidentImage(
+                imageUrl: imageUrl,
+                isPhone: isPhone,
               ),
             ),
-            const SizedBox(height: 14),
+            SizedBox(height: isPhone ? 8 : 14),
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: EdgeInsets.symmetric(
+                horizontal: isPhone ? 7 : 12,
+                vertical: isPhone ? 6 : 8,
+              ),
               decoration: BoxDecoration(
                 color: primaryGreen.withOpacity(0.08),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(isPhone ? 12 : 16),
               ),
               child: Text(
                 fullName,
@@ -997,23 +1138,23 @@ class _WebManageResidentsPageState extends State<WebManageResidentsPage> {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: GoogleFonts.poppins(
-                  fontSize: 12.5,
+                  fontSize: isPhone ? 10.5 : 12.5,
                   color: primaryGreen,
                   fontWeight: FontWeight.w600,
-                  height: 1.3,
+                  height: 1.25,
                 ),
               ),
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: isPhone ? 6 : 10),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
                   Icons.calendar_month_rounded,
-                  size: 14,
+                  size: isPhone ? 11 : 14,
                   color: Colors.grey[600],
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 4),
                 Expanded(
                   child: Text(
                     'Registered: $date',
@@ -1021,71 +1162,41 @@ class _WebManageResidentsPageState extends State<WebManageResidentsPage> {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.poppins(
-                      fontSize: 12.2,
+                      fontSize: isPhone ? 9.5 : 12.2,
                       color: Colors.grey[700],
-                      height: 1.35,
+                      height: 1.25,
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 14),
+            SizedBox(height: isPhone ? 8 : 14),
             Row(
               children: [
                 Expanded(
-                  child: SizedBox(
-                    height: 44,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        elevation: 0,
-                        backgroundColor: primaryGreen,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => WebEditResidentsDetailsPage(
-                              uid: resident['UID'].toString(),
-                            ),
+                  child: _buildAdaptiveActionButton(
+                    label: 'Edit',
+                    backgroundColor: primaryGreen,
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => WebEditResidentsDetailsPage(
+                            uid: resident['UID'].toString(),
                           ),
-                        );
-                      },
-                      child: Text(
-                        "Edit",
-                        style: GoogleFonts.poppins(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
                         ),
-                      ),
-                    ),
+                      );
+                    },
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 Expanded(
-                  child: SizedBox(
-                    height: 44,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        elevation: 0,
-                        backgroundColor: Colors.redAccent,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      onPressed: () {
-                        _archiveResident(resident['UID'].toString());
-                      },
-                      child: Text(
-                        'Archive',
-                        style: GoogleFonts.poppins(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
+                  child: _buildAdaptiveActionButton(
+                    label: 'Archive',
+                    backgroundColor: Colors.redAccent,
+                    onPressed: () {
+                      _archiveResident(resident['UID'].toString());
+                    },
                   ),
                 ),
               ],
@@ -1098,8 +1209,10 @@ class _WebManageResidentsPageState extends State<WebManageResidentsPage> {
 
   Widget _buildImagePlaceholder() {
     return Container(
+      width: double.infinity,
+      height: double.infinity,
       color: Colors.grey.shade200,
-      child: Icon(Icons.person_rounded, size: 56, color: Colors.grey.shade500),
+      child: Icon(Icons.person_rounded, size: 44, color: Colors.grey.shade500),
     );
   }
 }
