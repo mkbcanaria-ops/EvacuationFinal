@@ -259,7 +259,10 @@ class _WebReportsPageState extends State<WebReportsPage> {
             ),
           ),
           onTap: () {
-            setState(() => selectedPage = title);
+            setState(() {
+              selectedPage = title;
+            });
+
             Navigator.pop(context);
 
             if (title == 'Dashboard') {
@@ -281,6 +284,13 @@ class _WebReportsPageState extends State<WebReportsPage> {
                 context,
                 MaterialPageRoute(
                   builder: (context) => const WebDisplayAllQrPage(),
+                ),
+              );
+            } else if (title == 'Discharge Residents') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const WebDischargeDashboardPage(),
                 ),
               );
             } else if (title == 'Reports') {

@@ -38,6 +38,10 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
+  bool _isAuthUserVerified(User user) {
+    return user.emailConfirmedAt != null || user.confirmedAt != null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
@@ -712,54 +716,13 @@ class _LoginPageState extends State<LoginPage> {
 
       final uid = user.id;
 
-      final residentRecord = await supabase
-          .from('Users')
-          .select('Status')
-          .eq('UID', uid)
-          .maybeSingle();
-
       final adminRecord = await supabase
           .from('Admin_Account')
-          .select('Status')
+          .select('Admin_ID')
           .eq('Admin_ID', uid)
           .maybeSingle();
 
-      if (residentRecord != null) {
-        if (residentRecord['Status'] != 'Active') {
-          await _showPopup(
-            "Access Denied",
-            "Your resident account is currently blocked. Please contact the system administrator or MSWDO staff for assistance.",
-            isError: true,
-          );
-          return;
-        }
-
-        await _showPopup(
-          "Login Successful",
-          "Welcome to the resident evacuation portal.",
-          autoClose: true,
-        );
-
-        if (!mounted) return;
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const ResidentDashboardPage(),
-          ),
-        );
-        return;
-      }
-
       if (adminRecord != null) {
-        if (adminRecord['Status'] != 'Active') {
-          await _showPopup(
-            "Access Denied",
-            "Your administrator account is currently blocked. Please contact the system administrator.",
-            isError: true,
-          );
-          return;
-        }
-
         await _showPopup(
           "Admin Login Successful",
           "Welcome back. You may now manage resident evacuation records, evacuation centers, and reports.",
@@ -774,10 +737,44 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
+      if (!_isAuthUserVerified(user)) {
+        await supabase.auth.signOut();
+
+        await _showPopup(
+          "Account Not Verified",
+          "Your account exists, but your email is not yet verified. Please check your email and verify your account before logging in.",
+          isError: true,
+        );
+        return;
+      }
+
+      final userRecord = await supabase
+          .from('Users')
+          .select('UID, Email')
+          .eq('UID', uid)
+          .maybeSingle();
+
+      if (userRecord == null) {
+        await supabase.auth.signOut();
+
+        await _showPopup(
+          "User Record Not Found",
+          "Your account is verified, but no matching record was found in the Users table. Please register first or contact the system administrator.",
+          isError: true,
+        );
+        return;
+      }
+
       await _showPopup(
-        "Account Not Found",
-        "No resident or administrator record was found for this account.",
-        isError: true,
+        "Login Successful",
+        "Welcome to the resident evacuation portal.",
+        autoClose: true,
+      );
+
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const ResidentDashboardPage()),
       );
     } on AuthException catch (e) {
       await _showPopup("Authentication Error", e.message, isError: true);

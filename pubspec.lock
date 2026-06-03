@@ -1049,18 +1049,18 @@ packages:
     dependency: "direct main"
     description:
       name: universal_html
-      sha256: "0a1795dc516ed9fc48c6fdee8e9a99445cdce6871845d34e31c13184d7a743aa"
+      sha256: c0bcae5c733c60f26c7dfc88b10b0fd27cbcc45cb7492311cdaa6067e21c9cd4
       url: "https://pub.dev"
     source: hosted
-    version: "2.2.5"
+    version: "2.3.0"
   universal_io:
     dependency: transitive
     description:
       name: universal_io
-      sha256: "6780711d2a6de16fa28badff48ed8a0fc6b79a09384eda6eacd2e792fb79530a"
+      sha256: f63cbc48103236abf48e345e07a03ce5757ea86285ed313a6a032596ed9301e2
       url: "https://pub.dev"
     source: hosted
-    version: "2.3.0"
+    version: "2.3.1"
   url_launcher:
     dependency: transitive
     description:

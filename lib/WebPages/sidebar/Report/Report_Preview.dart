@@ -77,7 +77,10 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
   bool isLoading = true;
   String? errorMessage;
   bool isDownloading = false;
+  bool isSavingManualRows = false;
+  int _manualTempIdCounter = 0;
   final Map<String, TextEditingController> _outsideEcControllers = {};
+  final Map<String, TextEditingController> _manualRowControllers = {};
 
   String _barangayKey(String barangay) {
     return barangay.trim().toLowerCase();
@@ -161,6 +164,12 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
 
     _outsideEcControllers.clear();
 
+    for (final controller in _manualRowControllers.values) {
+      controller.dispose();
+    }
+
+    _manualRowControllers.clear();
+
     _verticalController.dispose();
     _horizontalController.dispose();
     super.dispose();
@@ -185,6 +194,569 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
     return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}_$hour-$minute';
   }
 
+  String _formatDateTimeForDb(DateTime dateTime) {
+    final hour = dateTime.hour.toString().padLeft(2, '0');
+    final minute = dateTime.minute.toString().padLeft(2, '0');
+    final second = dateTime.second.toString().padLeft(2, '0');
+
+    return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')} $hour:$minute:$second';
+  }
+
+  bool _isManualRow(Map<String, dynamic> row) {
+    return row['_isManual'] == true;
+  }
+
+  String _manualRowKey(Map<String, dynamic> row) {
+    final existingKey = (row['_manualKey'] ?? '').toString().trim();
+    if (existingKey.isNotEmpty) return existingKey;
+
+    final id = row['_manualId'];
+    if (id != null) {
+      final key = 'db_$id';
+      row['_manualKey'] = key;
+      return key;
+    }
+
+    _manualTempIdCounter++;
+    final key = 'new_$_manualTempIdCounter';
+    row['_manualKey'] = key;
+    return key;
+  }
+
+  String _manualControllerKey(Map<String, dynamic> row, String field) {
+    return '${_manualRowKey(row)}|||$field';
+  }
+
+  String _displayTextValue(dynamic value) {
+    return (value ?? '').toString();
+  }
+
+  TextEditingController _manualTextController({
+    required Map<String, dynamic> row,
+    required String field,
+    required dynamic value,
+  }) {
+    final key = _manualControllerKey(row, field);
+
+    if (!_manualRowControllers.containsKey(key)) {
+      _manualRowControllers[key] = TextEditingController(
+        text: _displayTextValue(value),
+      );
+    }
+
+    return _manualRowControllers[key]!;
+  }
+
+  TextEditingController _manualNumberController({
+    required Map<String, dynamic> row,
+    required String field,
+    required dynamic value,
+  }) {
+    final key = _manualControllerKey(row, field);
+
+    if (!_manualRowControllers.containsKey(key)) {
+      _manualRowControllers[key] = TextEditingController(
+        text: _displayManualNumber(value),
+      );
+    }
+
+    return _manualRowControllers[key]!;
+  }
+
+  void _recalculateManualComputedFields(Map<String, dynamic> row) {
+    _recalculateTotalDisplaced(row);
+
+    row['totalInsideMaleNow'] =
+        _toIntValue(row['infantMaleNow']) +
+        _toIntValue(row['toddlerMaleNow']) +
+        _toIntValue(row['preschoolMaleNow']) +
+        _toIntValue(row['schoolAgeMaleNow']) +
+        _toIntValue(row['teenageMaleNow']) +
+        _toIntValue(row['adultMaleNow']) +
+        _toIntValue(row['seniorMaleNow']);
+
+    row['totalInsideFemaleNow'] =
+        _toIntValue(row['infantFemaleNow']) +
+        _toIntValue(row['toddlerFemaleNow']) +
+        _toIntValue(row['preschoolFemaleNow']) +
+        _toIntValue(row['schoolAgeFemaleNow']) +
+        _toIntValue(row['teenageFemaleNow']) +
+        _toIntValue(row['adultFemaleNow']) +
+        _toIntValue(row['seniorFemaleNow']);
+  }
+
+  void _updateManualTextValue(
+    Map<String, dynamic> row,
+    String field,
+    String value,
+  ) {
+    row[field] = value;
+    setState(() {});
+  }
+
+  void _updateManualNumberValue(
+    Map<String, dynamic> row,
+    String field,
+    String value,
+  ) {
+    row[field] = _toIntValue(value);
+    _recalculateManualComputedFields(row);
+    setState(() {});
+  }
+
+  Map<String, dynamic> _emptyManualRow({Map<String, dynamic>? baseRow}) {
+    _manualTempIdCounter++;
+
+    final baseBarangay = (baseRow?['barangay'] ?? '').toString().trim();
+
+    final row = <String, dynamic>{
+      '_isManual': true,
+      '_manualKey': 'new_$_manualTempIdCounter',
+      '_manualId': null,
+      'barangay': baseBarangay,
+      'site': '',
+      'address': 'SANTA, ILOCOS SUR',
+      'originBrgyName': baseBarangay,
+      'originBrgyCount': baseBarangay.isEmpty ? 0 : 1,
+      'count': 0,
+      'families': 0,
+      'persons': 0,
+      'fourPsFamilies': 0,
+      'insideEcFamiliesCum': 0,
+      'insideEcFamiliesNow': 0,
+      'personsActualCum': 0,
+      'personsActualNow': 0,
+      'personsEstimateCum': 0,
+      'personsEstimateNow': 0,
+      'outsideEcFamiliesCum': 0,
+      'outsideEcFamiliesNow': 0,
+      'outsideEcPersonsCum': 0,
+      'outsideEcPersonsNow': 0,
+      'totalDisplacedFamiliesCum': 0,
+      'totalDisplacedFamiliesNow': 0,
+      'totalDisplacedPersonsCum': 0,
+      'totalDisplacedPersonsNow': 0,
+      'infantMaleNow': 0,
+      'infantFemaleNow': 0,
+      'toddlerMaleNow': 0,
+      'toddlerFemaleNow': 0,
+      'preschoolMaleNow': 0,
+      'preschoolFemaleNow': 0,
+      'schoolAgeMaleNow': 0,
+      'schoolAgeFemaleNow': 0,
+      'teenageMaleNow': 0,
+      'teenageFemaleNow': 0,
+      'adultMaleNow': 0,
+      'adultFemaleNow': 0,
+      'seniorMaleNow': 0,
+      'seniorFemaleNow': 0,
+      'totalInsideMaleNow': 0,
+      'totalInsideFemaleNow': 0,
+      'rowOrder': evacuationCenterRows.where(_isManualRow).length,
+    };
+
+    return row;
+  }
+
+  void _addManualRow({int? insertIndex, Map<String, dynamic>? baseRow}) {
+    setState(() {
+      final newRow = _emptyManualRow(baseRow: baseRow);
+      final safeIndex = insertIndex == null
+          ? evacuationCenterRows.length
+          : insertIndex.clamp(0, evacuationCenterRows.length).toInt();
+
+      evacuationCenterRows.insert(safeIndex, newRow);
+    });
+  }
+
+  void _removeManualRow(Map<String, dynamic> row) {
+    final rowKey = _manualRowKey(row);
+    final keysToRemove = _manualRowControllers.keys
+        .where((key) => key.startsWith('$rowKey|||'))
+        .toList();
+
+    for (final key in keysToRemove) {
+      _manualRowControllers[key]?.dispose();
+      _manualRowControllers.remove(key);
+    }
+
+    setState(() {
+      evacuationCenterRows.remove(row);
+    });
+  }
+
+  bool _isManualRowEmpty(Map<String, dynamic> row) {
+    final textHasValue = [
+      row['barangay'],
+      row['site'],
+      row['originBrgyName'],
+    ].any((value) => (value ?? '').toString().trim().isNotEmpty);
+
+    if (textHasValue) return false;
+
+    final numericFields = [
+      'count',
+      'families',
+      'persons',
+      'fourPsFamilies',
+      'insideEcFamiliesCum',
+      'insideEcFamiliesNow',
+      'personsActualCum',
+      'personsActualNow',
+      'personsEstimateCum',
+      'personsEstimateNow',
+      'outsideEcFamiliesCum',
+      'outsideEcFamiliesNow',
+      'outsideEcPersonsCum',
+      'outsideEcPersonsNow',
+      'infantMaleNow',
+      'infantFemaleNow',
+      'toddlerMaleNow',
+      'toddlerFemaleNow',
+      'preschoolMaleNow',
+      'preschoolFemaleNow',
+      'schoolAgeMaleNow',
+      'schoolAgeFemaleNow',
+      'teenageMaleNow',
+      'teenageFemaleNow',
+      'adultMaleNow',
+      'adultFemaleNow',
+      'seniorMaleNow',
+      'seniorFemaleNow',
+    ];
+
+    return numericFields.every((field) => _toIntValue(row[field]) == 0);
+  }
+
+  Map<String, dynamic> _manualRowFromDatabase(Map<String, dynamic> dbRow) {
+    final row = <String, dynamic>{
+      '_isManual': true,
+      '_manualId': dbRow['ID'],
+      '_manualKey': 'db_${dbRow['ID']}',
+      'barangay': _displayTextValue(dbRow['Barangay']),
+      'site': _displayTextValue(dbRow['Site']),
+      'address': _displayTextValue(dbRow['Address']).trim().isEmpty
+          ? 'SANTA, ILOCOS SUR'
+          : _displayTextValue(dbRow['Address']),
+      'originBrgyName': _displayTextValue(dbRow['Origin_Barangay']),
+      'originBrgyCount': _toIntValue(dbRow['Origin_Barangay_Count']),
+      'count': _toIntValue(dbRow['Barangay_Count']),
+      'families': _toIntValue(dbRow['Families']),
+      'persons': _toIntValue(dbRow['Persons']),
+      'fourPsFamilies': _toIntValue(dbRow['Four_Ps_Families']),
+      'insideEcFamiliesCum': _toIntValue(dbRow['Inside_EC_Families_Cum']),
+      'insideEcFamiliesNow': _toIntValue(dbRow['Inside_EC_Families_Now']),
+      'personsActualCum': _toIntValue(dbRow['Inside_EC_Persons_Actual_Cum']),
+      'personsActualNow': _toIntValue(dbRow['Inside_EC_Persons_Actual_Now']),
+      'personsEstimateCum': _toIntValue(
+        dbRow['Inside_EC_Persons_Estimate_Cum'],
+      ),
+      'personsEstimateNow': _toIntValue(
+        dbRow['Inside_EC_Persons_Estimate_Now'],
+      ),
+      'outsideEcFamiliesCum': _toIntValue(dbRow['Outside_EC_Families_Cum']),
+      'outsideEcFamiliesNow': _toIntValue(dbRow['Outside_EC_Families_Now']),
+      'outsideEcPersonsCum': _toIntValue(dbRow['Outside_EC_Persons_Cum']),
+      'outsideEcPersonsNow': _toIntValue(dbRow['Outside_EC_Persons_Now']),
+      'totalDisplacedFamiliesCum': _toIntValue(
+        dbRow['Total_Displaced_Families_Cum'],
+      ),
+      'totalDisplacedFamiliesNow': _toIntValue(
+        dbRow['Total_Displaced_Families_Now'],
+      ),
+      'totalDisplacedPersonsCum': _toIntValue(
+        dbRow['Total_Displaced_Persons_Cum'],
+      ),
+      'totalDisplacedPersonsNow': _toIntValue(
+        dbRow['Total_Displaced_Persons_Now'],
+      ),
+      'infantMaleNow': _toIntValue(dbRow['Infant_Male_Now']),
+      'infantFemaleNow': _toIntValue(dbRow['Infant_Female_Now']),
+      'toddlerMaleNow': _toIntValue(dbRow['Toddler_Male_Now']),
+      'toddlerFemaleNow': _toIntValue(dbRow['Toddler_Female_Now']),
+      'preschoolMaleNow': _toIntValue(dbRow['Preschool_Male_Now']),
+      'preschoolFemaleNow': _toIntValue(dbRow['Preschool_Female_Now']),
+      'schoolAgeMaleNow': _toIntValue(dbRow['School_Age_Male_Now']),
+      'schoolAgeFemaleNow': _toIntValue(dbRow['School_Age_Female_Now']),
+      'teenageMaleNow': _toIntValue(dbRow['Teenage_Male_Now']),
+      'teenageFemaleNow': _toIntValue(dbRow['Teenage_Female_Now']),
+      'adultMaleNow': _toIntValue(dbRow['Adult_Male_Now']),
+      'adultFemaleNow': _toIntValue(dbRow['Adult_Female_Now']),
+      'seniorMaleNow': _toIntValue(dbRow['Senior_Male_Now']),
+      'seniorFemaleNow': _toIntValue(dbRow['Senior_Female_Now']),
+      'totalInsideMaleNow': _toIntValue(dbRow['Total_Inside_Male_Now']),
+      'totalInsideFemaleNow': _toIntValue(dbRow['Total_Inside_Female_Now']),
+      'rowOrder': _toIntValue(dbRow['Row_Order']),
+    };
+
+    _recalculateManualComputedFields(row);
+    return row;
+  }
+
+  Map<String, dynamic> _manualRowToDatabase(
+    Map<String, dynamic> row,
+    int rowOrder,
+  ) {
+    _recalculateManualComputedFields(row);
+
+    return {
+      'Report_Start_Date': _formatDate(widget.startDate),
+      'Report_End_DateTime': _formatDateTimeForDb(widget.endDateTime),
+      'Barangay': _displayTextValue(row['barangay']).trim(),
+      'Site': _displayTextValue(row['site']).trim(),
+      'Address': _displayTextValue(row['address']).trim().isEmpty
+          ? 'SANTA, ILOCOS SUR'
+          : _displayTextValue(row['address']).trim(),
+      'Origin_Barangay': _displayTextValue(row['originBrgyName']).trim(),
+      'Origin_Barangay_Count': _toIntValue(row['originBrgyCount']),
+      'Barangay_Count': _toIntValue(row['count']),
+      'Families': _toIntValue(row['families']),
+      'Persons': _toIntValue(row['persons']),
+      'Four_Ps_Families': _toIntValue(row['fourPsFamilies']),
+      'Inside_EC_Families_Cum': _toIntValue(row['insideEcFamiliesCum']),
+      'Inside_EC_Families_Now': _toIntValue(row['insideEcFamiliesNow']),
+      'Inside_EC_Persons_Actual_Cum': _toIntValue(row['personsActualCum']),
+      'Inside_EC_Persons_Actual_Now': _toIntValue(row['personsActualNow']),
+      'Inside_EC_Persons_Estimate_Cum': _toIntValue(row['personsEstimateCum']),
+      'Inside_EC_Persons_Estimate_Now': _toIntValue(row['personsEstimateNow']),
+      'Outside_EC_Families_Cum': _toIntValue(row['outsideEcFamiliesCum']),
+      'Outside_EC_Families_Now': _toIntValue(row['outsideEcFamiliesNow']),
+      'Outside_EC_Persons_Cum': _toIntValue(row['outsideEcPersonsCum']),
+      'Outside_EC_Persons_Now': _toIntValue(row['outsideEcPersonsNow']),
+      'Total_Displaced_Families_Cum': _toIntValue(
+        row['totalDisplacedFamiliesCum'],
+      ),
+      'Total_Displaced_Families_Now': _toIntValue(
+        row['totalDisplacedFamiliesNow'],
+      ),
+      'Total_Displaced_Persons_Cum': _toIntValue(
+        row['totalDisplacedPersonsCum'],
+      ),
+      'Total_Displaced_Persons_Now': _toIntValue(
+        row['totalDisplacedPersonsNow'],
+      ),
+      'Infant_Male_Now': _toIntValue(row['infantMaleNow']),
+      'Infant_Female_Now': _toIntValue(row['infantFemaleNow']),
+      'Toddler_Male_Now': _toIntValue(row['toddlerMaleNow']),
+      'Toddler_Female_Now': _toIntValue(row['toddlerFemaleNow']),
+      'Preschool_Male_Now': _toIntValue(row['preschoolMaleNow']),
+      'Preschool_Female_Now': _toIntValue(row['preschoolFemaleNow']),
+      'School_Age_Male_Now': _toIntValue(row['schoolAgeMaleNow']),
+      'School_Age_Female_Now': _toIntValue(row['schoolAgeFemaleNow']),
+      'Teenage_Male_Now': _toIntValue(row['teenageMaleNow']),
+      'Teenage_Female_Now': _toIntValue(row['teenageFemaleNow']),
+      'Adult_Male_Now': _toIntValue(row['adultMaleNow']),
+      'Adult_Female_Now': _toIntValue(row['adultFemaleNow']),
+      'Senior_Male_Now': _toIntValue(row['seniorMaleNow']),
+      'Senior_Female_Now': _toIntValue(row['seniorFemaleNow']),
+      'Total_Inside_Male_Now': _toIntValue(row['totalInsideMaleNow']),
+      'Total_Inside_Female_Now': _toIntValue(row['totalInsideFemaleNow']),
+      'Row_Order': rowOrder,
+      'Is_Manual': true,
+      'Updated_At': DateTime.now().toIso8601String(),
+    };
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchManualRowsForReport() async {
+    final response = await supabase
+        .from('Report_Manual_Rows')
+        .select('*')
+        .eq('Report_Start_Date', _formatDate(widget.startDate))
+        .eq('Report_End_DateTime', _formatDateTimeForDb(widget.endDateTime))
+        .order('Row_Order', ascending: true);
+
+    final rows = List<Map<String, dynamic>>.from(response);
+    return rows.map(_manualRowFromDatabase).toList();
+  }
+
+  List<Map<String, dynamic>> _mergeAutomaticAndManualRows(
+    List<Map<String, dynamic>> automaticRows,
+    List<Map<String, dynamic>> manualRows,
+  ) {
+    final remainingManualRows = List<Map<String, dynamic>>.from(manualRows);
+    final mergedRows = <Map<String, dynamic>>[];
+
+    for (int i = 0; i < automaticRows.length; i++) {
+      final automaticRow = automaticRows[i];
+      mergedRows.add(automaticRow);
+
+      final currentBarangay = _barangayKey(
+        (automaticRow['barangay'] ?? '').toString(),
+      );
+
+      final isLastAutomaticRowOfBarangay =
+          i == automaticRows.length - 1 ||
+          _barangayKey((automaticRows[i + 1]['barangay'] ?? '').toString()) !=
+              currentBarangay;
+
+      if (isLastAutomaticRowOfBarangay) {
+        final rowsForBarangay = remainingManualRows
+            .where(
+              (manualRow) =>
+                  _barangayKey((manualRow['barangay'] ?? '').toString()) ==
+                  currentBarangay,
+            )
+            .toList();
+
+        for (final manualRow in rowsForBarangay) {
+          mergedRows.add(manualRow);
+          remainingManualRows.remove(manualRow);
+        }
+      }
+    }
+
+    mergedRows.addAll(remainingManualRows);
+    return mergedRows;
+  }
+
+  List<Map<String, dynamic>> _manualRows() {
+    return evacuationCenterRows.where(_isManualRow).toList();
+  }
+
+  List<Map<String, dynamic>> _manualRowsForSaving() {
+    return _manualRows().where((row) => !_isManualRowEmpty(row)).toList();
+  }
+
+  int _countForBarangayFromMap(Map<String, int> source, String barangay) {
+    final targetKey = _barangayKey(barangay);
+
+    for (final entry in source.entries) {
+      if (_barangayKey(entry.key) == targetKey) {
+        return entry.value;
+      }
+    }
+
+    return 0;
+  }
+
+  int _sumCountMap(Map<String, int> source) {
+    return source.values.fold(0, (sum, value) => sum + value);
+  }
+
+  Map<String, int> _automaticAffectedTotalsForBarangay(String barangay) {
+    return <String, int>{
+      'families': _countForBarangayFromMap(familyCounts, barangay),
+      'persons': _countForBarangayFromMap(personCounts, barangay),
+      'fourPsFamilies': _countForBarangayFromMap(fourPsFamilyCounts, barangay),
+    };
+  }
+
+  String _affectedTotalDisplay(
+    Map<String, int> totals,
+    String field,
+    bool shouldShow,
+  ) {
+    if (!shouldShow) return '';
+    return _displayManualNumber(totals[field] ?? 0);
+  }
+
+  Future<bool> _saveManualRowsToDatabase({bool showSuccess = true}) async {
+    if (isSavingManualRows) return false;
+
+    setState(() {
+      isSavingManualRows = true;
+    });
+
+    try {
+      final rowsToSave = _manualRowsForSaving();
+
+      await supabase
+          .from('Report_Manual_Rows')
+          .delete()
+          .eq('Report_Start_Date', _formatDate(widget.startDate))
+          .eq('Report_End_DateTime', _formatDateTimeForDb(widget.endDateTime));
+
+      if (rowsToSave.isNotEmpty) {
+        final payload = <Map<String, dynamic>>[];
+        for (int i = 0; i < rowsToSave.length; i++) {
+          payload.add(_manualRowToDatabase(rowsToSave[i], i));
+        }
+
+        await supabase.from('Report_Manual_Rows').insert(payload);
+      }
+
+      if (!mounted) return true;
+
+      if (showSuccess) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Manual rows saved successfully.')),
+        );
+      }
+
+      return true;
+    } catch (e) {
+      if (!mounted) return false;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Save failed: $e')));
+
+      return false;
+    } finally {
+      if (mounted) {
+        setState(() {
+          isSavingManualRows = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _confirmSaveBeforeDownload() async {
+    if (evacuationCenterRows.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No data available to export.')),
+      );
+      return;
+    }
+
+    final hasManualRows = _manualRows().isNotEmpty;
+
+    final result = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Save before downloading?'),
+          content: Text(
+            hasManualRows
+                ? 'Do you want to save the manual rows to the database before downloading the Excel report?'
+                : 'No manual rows were added. You can download the Excel report now.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop('cancel'),
+              child: const Text('Cancel'),
+            ),
+            if (hasManualRows)
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop('download'),
+                child: const Text('Download Only'),
+              ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(
+                dialogContext,
+              ).pop(hasManualRows ? 'save_download' : 'download'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0D743D),
+                foregroundColor: Colors.white,
+              ),
+              child: Text(hasManualRows ? 'Save & Download' : 'Download'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result == null || result == 'cancel') return;
+
+    if (result == 'save_download') {
+      final saved = await _saveManualRowsToDatabase(showSuccess: false);
+      if (!saved) return;
+    }
+
+    await _downloadExcel();
+  }
+
   Future<void> _fetchDischargeResidents() async {
     setState(() {
       isLoading = true;
@@ -195,6 +767,11 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
       fourPsFamilyCounts = {};
       evacuationCenterRows = [];
     });
+
+    for (final controller in _manualRowControllers.values) {
+      controller.dispose();
+    }
+    _manualRowControllers.clear();
 
     try {
       final start = DateTime(
@@ -719,6 +1296,9 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
         row.remove('_familyIdsNow');
       }
 
+      final manualRows = await _fetchManualRowsForReport();
+      final reportRows = _mergeAutomaticAndManualRows(groupedRows, manualRows);
+
       if (!mounted) return;
 
       setState(() {
@@ -726,7 +1306,7 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
         familyCounts = sortedFamilies;
         personCounts = sortedPersons;
         fourPsFamilyCounts = sortedFourPsFamilies;
-        evacuationCenterRows = groupedRows;
+        evacuationCenterRows = reportRows;
         isLoading = false;
       });
     } catch (e) {
@@ -954,13 +1534,26 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
       sheet.setRowHeight(6, 26);
       sheet.setRowHeight(7, 26);
 
-      final int totalBarangayAffected = barangayCounts.length;
-      final int totalFamilies = familyCounts.values.fold(0, (a, b) => a + b);
-      final int totalPersons = personCounts.values.fold(0, (a, b) => a + b);
-      final int total4PsFamilies = fourPsFamilyCounts.values.fold(
-        0,
-        (a, b) => a + b,
-      );
+      final manualRows = _manualRows();
+
+      final int totalBarangayAffected =
+          _sumCountMap(barangayCounts) +
+          manualRows.fold(0, (sum, row) => sum + _toIntValue(row['count']));
+
+      final int totalFamilies =
+          _sumCountMap(familyCounts) +
+          manualRows.fold(0, (sum, row) => sum + _toIntValue(row['families']));
+
+      final int totalPersons =
+          _sumCountMap(personCounts) +
+          manualRows.fold(0, (sum, row) => sum + _toIntValue(row['persons']));
+
+      final int total4PsFamilies =
+          _sumCountMap(fourPsFamilyCounts) +
+          manualRows.fold(
+            0,
+            (sum, row) => sum + _toIntValue(row['fourPsFamilies']),
+          );
 
       final int totalInsideEcFamiliesCum = evacuationCenterRows.fold(
         0,
@@ -1502,10 +2095,28 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
       String lastBarangay = '';
 
       for (final row in evacuationCenterRows) {
+        final bool isManual = _isManualRow(row);
         final String barangay = (row['barangay'] ?? '').toString();
         final String site = (row['site'] ?? '').toString();
+        final String address = (row['address'] ?? 'SANTA, ILOCOS SUR')
+            .toString();
+        final String originBarangay = (row['originBrgyName'] ?? barangay)
+            .toString();
         final bool isFirstRowOfBarangay =
-            _barangayKey(barangay) != _barangayKey(lastBarangay);
+            isManual || _barangayKey(barangay) != _barangayKey(lastBarangay);
+        final affectedTotals = isManual
+            ? <String, int>{
+                'families': _toIntValue(row['families']),
+                'persons': _toIntValue(row['persons']),
+                'fourPsFamilies': _toIntValue(row['fourPsFamilies']),
+              }
+            : _automaticAffectedTotalsForBarangay(barangay);
+
+        if (isManual) {
+          _recalculateManualComputedFields(row);
+        } else {
+          _recalculateTotalDisplaced(row);
+        }
 
         fillRowBackground(rowIndex, bodyTextStyle, bodyNumberStyle);
 
@@ -1520,7 +2131,7 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
           rowIndex,
           2,
           xls.TextCellValue(
-            isFirstRowOfBarangay ? (row['count'] ?? '').toString() : '',
+            isFirstRowOfBarangay ? _displayManualNumber(row['count']) : '',
           ),
           bodyNumberStyle,
         );
@@ -1529,7 +2140,11 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
           rowIndex,
           3,
           xls.TextCellValue(
-            isFirstRowOfBarangay ? (row['families'] ?? 0).toString() : '',
+            _affectedTotalDisplay(
+              affectedTotals,
+              'families',
+              isFirstRowOfBarangay,
+            ),
           ),
           bodyNumberStyle,
         );
@@ -1538,7 +2153,11 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
           rowIndex,
           4,
           xls.TextCellValue(
-            isFirstRowOfBarangay ? (row['persons'] ?? 0).toString() : '',
+            _affectedTotalDisplay(
+              affectedTotals,
+              'persons',
+              isFirstRowOfBarangay,
+            ),
           ),
           bodyNumberStyle,
         );
@@ -1547,7 +2166,11 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
           rowIndex,
           5,
           xls.TextCellValue(
-            isFirstRowOfBarangay ? (row['fourPsFamilies'] ?? 0).toString() : '',
+            _affectedTotalDisplay(
+              affectedTotals,
+              'fourPsFamilies',
+              isFirstRowOfBarangay,
+            ),
           ),
           bodyNumberStyle,
         );
@@ -1557,49 +2180,78 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
         setCellRC(
           rowIndex,
           7,
-          xls.TextCellValue('SANTA, ILOCOS SUR'),
+          xls.TextCellValue(
+            address.trim().isEmpty ? 'SANTA, ILOCOS SUR' : address,
+          ),
           bodyTextStyle,
         );
 
-        setCellRC(rowIndex, 8, xls.TextCellValue(barangay), bodyTextStyle);
+        setCellRC(
+          rowIndex,
+          8,
+          xls.TextCellValue(originBarangay),
+          bodyTextStyle,
+        );
 
         setCellRC(
           rowIndex,
           9,
-          xls.TextCellValue(isFirstRowOfBarangay ? '1' : ''),
+          xls.TextCellValue(
+            isManual
+                ? _displayManualNumber(row['originBrgyCount'])
+                : isFirstRowOfBarangay
+                ? '1'
+                : '',
+          ),
           bodyNumberStyle,
         );
 
         setCellRC(
           rowIndex,
           10,
-          xls.IntCellValue((row['insideEcFamiliesCum'] ?? 0) as int),
+          xls.IntCellValue(_toIntValue(row['insideEcFamiliesCum'])),
           bodyNumberStyle,
         );
 
         setCellRC(
           rowIndex,
           11,
-          xls.IntCellValue((row['insideEcFamiliesNow'] ?? 0) as int),
+          xls.IntCellValue(_toIntValue(row['insideEcFamiliesNow'])),
           bodyNumberStyle,
         );
 
         setCellRC(
           rowIndex,
           12,
-          xls.IntCellValue((row['personsActualCum'] ?? 0) as int),
+          xls.IntCellValue(_toIntValue(row['personsActualCum'])),
           bodyNumberStyle,
         );
 
         setCellRC(
           rowIndex,
           13,
-          xls.IntCellValue((row['personsActualNow'] ?? 0) as int),
+          xls.IntCellValue(_toIntValue(row['personsActualNow'])),
           bodyNumberStyle,
         );
 
-        setCellRC(rowIndex, 14, xls.TextCellValue(''), bodyNumberStyle);
-        setCellRC(rowIndex, 15, xls.TextCellValue(''), bodyNumberStyle);
+        setCellRC(
+          rowIndex,
+          14,
+          _toIntValue(row['personsEstimateCum']) == 0
+              ? xls.TextCellValue('')
+              : xls.IntCellValue(_toIntValue(row['personsEstimateCum'])),
+          bodyNumberStyle,
+        );
+
+        setCellRC(
+          rowIndex,
+          15,
+          _toIntValue(row['personsEstimateNow']) == 0
+              ? xls.TextCellValue('')
+              : xls.IntCellValue(_toIntValue(row['personsEstimateNow'])),
+          bodyNumberStyle,
+        );
+
         setCellRC(
           rowIndex,
           16,
@@ -1633,8 +2285,6 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
           bodyNumberStyle,
         );
 
-        _recalculateTotalDisplaced(row);
-
         setCellRC(
           rowIndex,
           20,
@@ -1666,116 +2316,103 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
         setCellRC(
           rowIndex,
           24,
-          xls.IntCellValue((row['infantMaleNow'] ?? 0) as int),
+          xls.IntCellValue(_toIntValue(row['infantMaleNow'])),
           bodyNumberStyle,
         );
-
         setCellRC(
           rowIndex,
           25,
-          xls.IntCellValue((row['infantFemaleNow'] ?? 0) as int),
+          xls.IntCellValue(_toIntValue(row['infantFemaleNow'])),
           bodyNumberStyle,
         );
-
         setCellRC(
           rowIndex,
           26,
-          xls.IntCellValue((row['toddlerMaleNow'] ?? 0) as int),
+          xls.IntCellValue(_toIntValue(row['toddlerMaleNow'])),
           bodyNumberStyle,
         );
-
         setCellRC(
           rowIndex,
           27,
-          xls.IntCellValue((row['toddlerFemaleNow'] ?? 0) as int),
+          xls.IntCellValue(_toIntValue(row['toddlerFemaleNow'])),
           bodyNumberStyle,
         );
-
         setCellRC(
           rowIndex,
           28,
-          xls.IntCellValue((row['preschoolMaleNow'] ?? 0) as int),
+          xls.IntCellValue(_toIntValue(row['preschoolMaleNow'])),
           bodyNumberStyle,
         );
-
         setCellRC(
           rowIndex,
           29,
-          xls.IntCellValue((row['preschoolFemaleNow'] ?? 0) as int),
+          xls.IntCellValue(_toIntValue(row['preschoolFemaleNow'])),
           bodyNumberStyle,
         );
-
         setCellRC(
           rowIndex,
           30,
-          xls.IntCellValue((row['schoolAgeMaleNow'] ?? 0) as int),
+          xls.IntCellValue(_toIntValue(row['schoolAgeMaleNow'])),
           bodyNumberStyle,
         );
-
         setCellRC(
           rowIndex,
           31,
-          xls.IntCellValue((row['schoolAgeFemaleNow'] ?? 0) as int),
+          xls.IntCellValue(_toIntValue(row['schoolAgeFemaleNow'])),
           bodyNumberStyle,
         );
-
         setCellRC(
           rowIndex,
           32,
-          xls.IntCellValue((row['teenageMaleNow'] ?? 0) as int),
+          xls.IntCellValue(_toIntValue(row['teenageMaleNow'])),
           bodyNumberStyle,
         );
-
         setCellRC(
           rowIndex,
           33,
-          xls.IntCellValue((row['teenageFemaleNow'] ?? 0) as int),
+          xls.IntCellValue(_toIntValue(row['teenageFemaleNow'])),
           bodyNumberStyle,
         );
-
         setCellRC(
           rowIndex,
           34,
-          xls.IntCellValue((row['adultMaleNow'] ?? 0) as int),
+          xls.IntCellValue(_toIntValue(row['adultMaleNow'])),
           bodyNumberStyle,
         );
-
         setCellRC(
           rowIndex,
           35,
-          xls.IntCellValue((row['adultFemaleNow'] ?? 0) as int),
+          xls.IntCellValue(_toIntValue(row['adultFemaleNow'])),
           bodyNumberStyle,
         );
-
         setCellRC(
           rowIndex,
           36,
-          xls.IntCellValue((row['seniorMaleNow'] ?? 0) as int),
+          xls.IntCellValue(_toIntValue(row['seniorMaleNow'])),
           bodyNumberStyle,
         );
-
         setCellRC(
           rowIndex,
           37,
-          xls.IntCellValue((row['seniorFemaleNow'] ?? 0) as int),
+          xls.IntCellValue(_toIntValue(row['seniorFemaleNow'])),
           bodyNumberStyle,
         );
-
         setCellRC(
           rowIndex,
           38,
-          xls.IntCellValue((row['totalInsideMaleNow'] ?? 0) as int),
+          xls.IntCellValue(_toIntValue(row['totalInsideMaleNow'])),
           bodyNumberStyle,
         );
-
         setCellRC(
           rowIndex,
           39,
-          xls.IntCellValue((row['totalInsideFemaleNow'] ?? 0) as int),
+          xls.IntCellValue(_toIntValue(row['totalInsideFemaleNow'])),
           bodyNumberStyle,
         );
 
-        lastBarangay = barangay;
+        if (!isManual) {
+          lastBarangay = barangay;
+        }
         rowIndex++;
       }
 
@@ -1870,7 +2507,7 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
       height: height,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFDE7), // light yellow to show editable
+        color: color,
         border: Border.all(color: Colors.black, width: 1),
       ),
       child: TextField(
@@ -1878,6 +2515,43 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
         onChanged: onChanged,
         keyboardType: TextInputType.number,
         textAlign: TextAlign.right,
+        textAlignVertical: TextAlignVertical.center,
+        style: GoogleFonts.arimo(
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          color: Colors.black,
+          height: 1.0,
+        ),
+        decoration: const InputDecoration(
+          isDense: true,
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+        ),
+      ),
+    );
+  }
+
+  Widget _editableTextCell({
+    required TextEditingController controller,
+    required double width,
+    required double height,
+    required ValueChanged<String> onChanged,
+    Color color = const Color(0xFFFFFDE7),
+    TextAlign textAlign = TextAlign.left,
+  }) {
+    return Container(
+      width: width,
+      height: height,
+      alignment: Alignment.centerLeft,
+      decoration: BoxDecoration(
+        color: color,
+        border: Border.all(color: Colors.black, width: 1),
+      ),
+      child: TextField(
+        controller: controller,
+        onChanged: onChanged,
+        keyboardType: TextInputType.text,
+        textAlign: textAlign,
         textAlignVertical: TextAlignVertical.center,
         style: GoogleFonts.arimo(
           fontSize: 14,
@@ -1976,18 +2650,29 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
         .map((e) => (e['site'] ?? '').toString())
         .toList();
 
-    final addressValues = List<String>.filled(
-      evacuationCenterRows.isEmpty ? 1 : evacuationCenterRows.length,
-      'SANTA, ILOCOS SUR',
-    );
+    final addressValues = evacuationCenterRows.isEmpty
+        ? ['SANTA, ILOCOS SUR']
+        : evacuationCenterRows
+              .map((e) => (e['address'] ?? 'SANTA, ILOCOS SUR').toString())
+              .toList();
 
     final originBarangayValues = evacuationCenterRows
-        .map((e) => (e['barangay'] ?? '').toString())
+        .map(
+          (e) => _isManualRow(e)
+              ? (e['originBrgyName'] ?? '').toString()
+              : (e['barangay'] ?? '').toString(),
+        )
         .toList();
 
     final originCountValues = evacuationCenterRows.isEmpty
         ? ['0']
-        : List<String>.filled(evacuationCenterRows.length, '1');
+        : evacuationCenterRows
+              .map(
+                (e) => _isManualRow(e)
+                    ? _displayManualNumber(e['originBrgyCount'])
+                    : '1',
+              )
+              .toList();
 
     colRegion = _getMaxWidthForValues(
       ['GRAND TOTAL', 'Ilocos Sur', 'Province', 'Santa'],
@@ -2272,6 +2957,76 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
     );
   }
 
+  Widget _cleanAddRowIconButton({
+    required String tooltip,
+    required VoidCallback? onPressed,
+    double size = 34,
+    bool filled = false,
+  }) {
+    const mainColor = Color(0xFF0D743D);
+    final enabled = onPressed != null;
+
+    return Tooltip(
+      message: tooltip,
+      waitDuration: const Duration(milliseconds: 350),
+      child: Material(
+        color: filled
+            ? (enabled ? mainColor : Colors.grey.shade400)
+            : (enabled ? const Color(0xFFEAF6EF) : Colors.grey.shade200),
+        shape: CircleBorder(
+          side: BorderSide(
+            color: enabled ? mainColor : Colors.grey.shade400,
+            width: 1,
+          ),
+        ),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onPressed,
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: Icon(
+              Icons.add,
+              size: filled ? 20 : 16,
+              color: filled
+                  ? Colors.white
+                  : (enabled ? mainColor : Colors.grey.shade500),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAddManualRowIcon() {
+    return _cleanAddRowIconButton(
+      tooltip: 'Add manual row at the bottom',
+      onPressed: isSavingManualRows ? null : () => _addManualRow(),
+      size: 38,
+      filled: true,
+    );
+  }
+
+  Widget _addBelowCell({
+    required double height,
+    required VoidCallback onPressed,
+  }) {
+    return Container(
+      width: colRegion,
+      height: height,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: Colors.black, width: 1),
+      ),
+      child: _cleanAddRowIconButton(
+        tooltip: 'Add manual row below this row',
+        onPressed: onPressed,
+        size: 24,
+      ),
+    );
+  }
+
   Widget _buildRow({
     required String region,
     required String barangayName,
@@ -2319,21 +3074,24 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
     double height = 21,
     bool editableOutsideEc = false,
     Map<String, dynamic>? sourceRow,
+    VoidCallback? onAddBelow,
   }) {
     return Row(
       children: [
-        _cell(
-          text: region,
-          width: colRegion,
-          height: height,
-          bold: bold,
-          italic: italicRegion,
-          color: color,
-          fontSize: 15,
-          alignment: Alignment.centerLeft,
-          textAlign: TextAlign.left,
-          padding: EdgeInsets.only(left: italicRegion ? 18 : 10),
-        ),
+        onAddBelow == null
+            ? _cell(
+                text: region,
+                width: colRegion,
+                height: height,
+                bold: bold,
+                italic: italicRegion,
+                color: color,
+                fontSize: 15,
+                alignment: Alignment.centerLeft,
+                textAlign: TextAlign.left,
+                padding: EdgeInsets.only(left: italicRegion ? 18 : 10),
+              )
+            : _addBelowCell(height: height, onPressed: onAddBelow),
         _cell(
           text: barangayName,
           width: colBarangayName,
@@ -2796,6 +3554,346 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
     );
   }
 
+  Widget _manualActionCell(Map<String, dynamic> row, double height) {
+    return Container(
+      width: colRegion,
+      height: height,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7D6),
+        border: Border.all(color: Colors.black, width: 1),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFE8A3),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: const Color(0xFFE0B84D), width: 1),
+            ),
+            child: Text(
+              'Manual',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.poppins(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF5F4500),
+              ),
+            ),
+          ),
+          const Spacer(),
+          Tooltip(
+            message: 'Remove manual row',
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () => _removeManualRow(row),
+              child: const SizedBox(
+                width: 22,
+                height: 22,
+                child: Icon(Icons.close, size: 16, color: Colors.red),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _manualTextCell({
+    required Map<String, dynamic> row,
+    required String field,
+    required double width,
+    required double height,
+  }) {
+    return _editableTextCell(
+      controller: _manualTextController(
+        row: row,
+        field: field,
+        value: row[field],
+      ),
+      width: width,
+      height: height,
+      onChanged: (value) => _updateManualTextValue(row, field, value),
+      color: const Color(0xFFFFFDE7),
+    );
+  }
+
+  Widget _manualNumberCell({
+    required Map<String, dynamic> row,
+    required String field,
+    required double width,
+    required double height,
+  }) {
+    return _editableNumberCell(
+      controller: _manualNumberController(
+        row: row,
+        field: field,
+        value: row[field],
+      ),
+      width: width,
+      height: height,
+      onChanged: (value) => _updateManualNumberValue(row, field, value),
+      color: const Color(0xFFFFFDE7),
+    );
+  }
+
+  Widget _manualComputedNumberCell({
+    required String text,
+    required double width,
+    required double height,
+  }) {
+    return _cell(
+      text: text,
+      width: width,
+      height: height,
+      color: const Color(0xFFE8F5E9),
+      fontSize: 15,
+      alignment: Alignment.centerRight,
+      textAlign: TextAlign.right,
+    );
+  }
+
+  Widget _buildManualRow(Map<String, dynamic> row) {
+    const double height = 28;
+    _recalculateManualComputedFields(row);
+
+    return Row(
+      children: [
+        _manualActionCell(row, height),
+        _manualTextCell(
+          row: row,
+          field: 'barangay',
+          width: colBarangayName,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'count',
+          width: colBarangayCount,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'families',
+          width: colFamilies,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'persons',
+          width: colPersons,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'fourPsFamilies',
+          width: col4PsFamilies,
+          height: height,
+        ),
+        _manualTextCell(
+          row: row,
+          field: 'site',
+          width: colEvacuationCenterName,
+          height: height,
+        ),
+        _manualTextCell(
+          row: row,
+          field: 'address',
+          width: colAddress,
+          height: height,
+        ),
+        _manualTextCell(
+          row: row,
+          field: 'originBrgyName',
+          width: colOriginBrgyName,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'originBrgyCount',
+          width: colOriginBrgyCount,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'insideEcFamiliesCum',
+          width: colInsideEcFamiliesCum,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'insideEcFamiliesNow',
+          width: colInsideEcFamiliesNow,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'personsActualCum',
+          width: colPersonsActualCum,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'personsActualNow',
+          width: colPersonsActualNow,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'personsEstimateCum',
+          width: colPersonsEstimateCum,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'personsEstimateNow',
+          width: colPersonsEstimateNow,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'outsideEcFamiliesCum',
+          width: colOutsideEcFamiliesCum,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'outsideEcFamiliesNow',
+          width: colOutsideEcFamiliesNow,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'outsideEcPersonsCum',
+          width: colOutsideEcPersonsCum,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'outsideEcPersonsNow',
+          width: colOutsideEcPersonsNow,
+          height: height,
+        ),
+        _manualComputedNumberCell(
+          text: _toIntValue(row['totalDisplacedFamiliesCum']).toString(),
+          width: colTotalDisplacedFamiliesCum,
+          height: height,
+        ),
+        _manualComputedNumberCell(
+          text: _toIntValue(row['totalDisplacedFamiliesNow']).toString(),
+          width: colTotalDisplacedFamiliesNow,
+          height: height,
+        ),
+        _manualComputedNumberCell(
+          text: _toIntValue(row['totalDisplacedPersonsCum']).toString(),
+          width: colTotalDisplacedPersonsCum,
+          height: height,
+        ),
+        _manualComputedNumberCell(
+          text: _toIntValue(row['totalDisplacedPersonsNow']).toString(),
+          width: colTotalDisplacedPersonsNow,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'infantMaleNow',
+          width: colInfantMaleNow,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'infantFemaleNow',
+          width: colInfantFemaleNow,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'toddlerMaleNow',
+          width: colToddlerMaleNow,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'toddlerFemaleNow',
+          width: colToddlerFemaleNow,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'preschoolMaleNow',
+          width: colPreschoolMaleNow,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'preschoolFemaleNow',
+          width: colPreschoolFemaleNow,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'schoolAgeMaleNow',
+          width: colSchoolAgeMaleNow,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'schoolAgeFemaleNow',
+          width: colSchoolAgeFemaleNow,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'teenageMaleNow',
+          width: colTeenageMaleNow,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'teenageFemaleNow',
+          width: colTeenageFemaleNow,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'adultMaleNow',
+          width: colAdultMaleNow,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'adultFemaleNow',
+          width: colAdultFemaleNow,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'seniorMaleNow',
+          width: colSeniorMaleNow,
+          height: height,
+        ),
+        _manualNumberCell(
+          row: row,
+          field: 'seniorFemaleNow',
+          width: colSeniorFemaleNow,
+          height: height,
+        ),
+        _manualComputedNumberCell(
+          text: _toIntValue(row['totalInsideMaleNow']).toString(),
+          width: colTotalInsideMaleNow,
+          height: height,
+        ),
+        _manualComputedNumberCell(
+          text: _toIntValue(row['totalInsideFemaleNow']).toString(),
+          width: colTotalInsideFemaleNow,
+          height: height,
+        ),
+      ],
+    );
+  }
+
   List<Widget> _buildBarangayRows() {
     if (evacuationCenterRows.isEmpty) {
       return [
@@ -2841,6 +3939,7 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
           totalInsideMaleNow: '0',
           totalInsideFemaleNow: '0',
           color: Colors.white,
+          onAddBelow: () => _addManualRow(),
         ),
       ];
     }
@@ -2849,13 +3948,15 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
     String lastBarangay = '';
 
     for (final row in evacuationCenterRows) {
+      if (_isManualRow(row)) {
+        rows.add(_buildManualRow(row));
+        continue;
+      }
+
       final barangay = (row['barangay'] ?? '').toString();
       final site = (row['site'] ?? '').toString();
 
       final count = (row['count'] ?? '').toString();
-      final families = (row['families'] ?? 0).toString();
-      final persons = (row['persons'] ?? 0).toString();
-      final fourPsFamilies = (row['fourPsFamilies'] ?? 0).toString();
       final insideEcFamiliesCum = (row['insideEcFamiliesCum'] ?? 0).toString();
       final insideEcFamiliesNow = (row['insideEcFamiliesNow'] ?? 0).toString();
       final personsActualCum = (row['personsActualCum'] ?? 0).toString();
@@ -2891,15 +3992,28 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
 
       final bool isFirstRowOfBarangay =
           _barangayKey(barangay) != _barangayKey(lastBarangay);
+      final affectedTotals = _automaticAffectedTotalsForBarangay(barangay);
 
       rows.add(
         _buildRow(
           region: '',
           barangayName: isFirstRowOfBarangay ? barangay : '',
           barangayCount: isFirstRowOfBarangay ? count : '',
-          families: isFirstRowOfBarangay ? families : '',
-          persons: isFirstRowOfBarangay ? persons : '',
-          fourPsFamilies: isFirstRowOfBarangay ? fourPsFamilies : '',
+          families: _affectedTotalDisplay(
+            affectedTotals,
+            'families',
+            isFirstRowOfBarangay,
+          ),
+          persons: _affectedTotalDisplay(
+            affectedTotals,
+            'persons',
+            isFirstRowOfBarangay,
+          ),
+          fourPsFamilies: _affectedTotalDisplay(
+            affectedTotals,
+            'fourPsFamilies',
+            isFirstRowOfBarangay,
+          ),
           evacuationCenterName: site,
           address: 'SANTA, ILOCOS SUR',
           originBrgyName: barangay,
@@ -2944,6 +4058,10 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
           color: Colors.white,
           editableOutsideEc: isFirstRowOfBarangay,
           sourceRow: row,
+          onAddBelow: () {
+            final insertIndex = evacuationCenterRows.indexOf(row) + 1;
+            _addManualRow(insertIndex: insertIndex, baseRow: row);
+          },
         ),
       );
 
@@ -3019,6 +4137,44 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
         colSeniorFemaleNow +
         colTotalInsideMaleNow +
         colTotalInsideFemaleNow;
+
+    final manualRows = _manualRows();
+
+    int sumField(String field) {
+      return evacuationCenterRows.fold(
+        0,
+        (sum, row) => sum + _toIntValue(row[field]),
+      );
+    }
+
+    final grandBarangayCount =
+        _sumCountMap(barangayCounts) +
+        manualRows.fold(0, (sum, row) => sum + _toIntValue(row['count']));
+    final grandFamilies =
+        _sumCountMap(familyCounts) +
+        manualRows.fold(0, (sum, row) => sum + _toIntValue(row['families']));
+    final grandPersons =
+        _sumCountMap(personCounts) +
+        manualRows.fold(0, (sum, row) => sum + _toIntValue(row['persons']));
+    final grandFourPs =
+        _sumCountMap(fourPsFamilyCounts) +
+        manualRows.fold(
+          0,
+          (sum, row) => sum + _toIntValue(row['fourPsFamilies']),
+        );
+
+    final grandInsideFamiliesCum = sumField('insideEcFamiliesCum');
+    final grandInsideFamiliesNow = sumField('insideEcFamiliesNow');
+    final grandPersonsActualCum = sumField('personsActualCum');
+    final grandPersonsActualNow = sumField('personsActualNow');
+    final grandOutsideFamiliesCum = sumField('outsideEcFamiliesCum');
+    final grandOutsideFamiliesNow = sumField('outsideEcFamiliesNow');
+    final grandOutsidePersonsCum = sumField('outsideEcPersonsCum');
+    final grandOutsidePersonsNow = sumField('outsideEcPersonsNow');
+    final grandDisplacedFamiliesCum = sumField('totalDisplacedFamiliesCum');
+    final grandDisplacedFamiliesNow = sumField('totalDisplacedFamiliesNow');
+    final grandDisplacedPersonsCum = sumField('totalDisplacedPersonsCum');
+    final grandDisplacedPersonsNow = sumField('totalDisplacedPersonsNow');
 
     return Container(
       decoration: BoxDecoration(
@@ -3728,44 +4884,44 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
           _buildRow(
             region: 'GRAND TOTAL',
             barangayName: '',
-            barangayCount: '',
-            families: '',
-            persons: '',
-            fourPsFamilies: '',
+            barangayCount: grandBarangayCount.toString(),
+            families: grandFamilies.toString(),
+            persons: grandPersons.toString(),
+            fourPsFamilies: grandFourPs.toString(),
             evacuationCenterName: '',
             address: '',
             originBrgyName: '',
             originBrgyCount: '',
-            insideEcFamiliesCum: '',
-            insideEcFamiliesNow: '',
-            personsActualCum: '',
-            personsActualNow: '',
+            insideEcFamiliesCum: grandInsideFamiliesCum.toString(),
+            insideEcFamiliesNow: grandInsideFamiliesNow.toString(),
+            personsActualCum: grandPersonsActualCum.toString(),
+            personsActualNow: grandPersonsActualNow.toString(),
             personsEstimateCum: '',
             personsEstimateNow: '',
-            outsideEcFamiliesCum: '',
-            outsideEcFamiliesNow: '',
-            outsideEcPersonsCum: '',
-            outsideEcPersonsNow: '',
-            totalDisplacedFamiliesCum: '',
-            totalDisplacedFamiliesNow: '',
-            totalDisplacedPersonsCum: '',
-            totalDisplacedPersonsNow: '',
-            infantMaleNow: '',
-            infantFemaleNow: '',
-            toddlerMaleNow: '',
-            toddlerFemaleNow: '',
-            preschoolMaleNow: '',
-            preschoolFemaleNow: '',
-            schoolAgeMaleNow: '',
-            schoolAgeFemaleNow: '',
-            teenageMaleNow: '',
-            teenageFemaleNow: '',
-            adultMaleNow: '',
-            adultFemaleNow: '',
-            seniorMaleNow: '',
-            seniorFemaleNow: '',
-            totalInsideMaleNow: '',
-            totalInsideFemaleNow: '',
+            outsideEcFamiliesCum: grandOutsideFamiliesCum.toString(),
+            outsideEcFamiliesNow: grandOutsideFamiliesNow.toString(),
+            outsideEcPersonsCum: grandOutsidePersonsCum.toString(),
+            outsideEcPersonsNow: grandOutsidePersonsNow.toString(),
+            totalDisplacedFamiliesCum: grandDisplacedFamiliesCum.toString(),
+            totalDisplacedFamiliesNow: grandDisplacedFamiliesNow.toString(),
+            totalDisplacedPersonsCum: grandDisplacedPersonsCum.toString(),
+            totalDisplacedPersonsNow: grandDisplacedPersonsNow.toString(),
+            infantMaleNow: sumField('infantMaleNow').toString(),
+            infantFemaleNow: sumField('infantFemaleNow').toString(),
+            toddlerMaleNow: sumField('toddlerMaleNow').toString(),
+            toddlerFemaleNow: sumField('toddlerFemaleNow').toString(),
+            preschoolMaleNow: sumField('preschoolMaleNow').toString(),
+            preschoolFemaleNow: sumField('preschoolFemaleNow').toString(),
+            schoolAgeMaleNow: sumField('schoolAgeMaleNow').toString(),
+            schoolAgeFemaleNow: sumField('schoolAgeFemaleNow').toString(),
+            teenageMaleNow: sumField('teenageMaleNow').toString(),
+            teenageFemaleNow: sumField('teenageFemaleNow').toString(),
+            adultMaleNow: sumField('adultMaleNow').toString(),
+            adultFemaleNow: sumField('adultFemaleNow').toString(),
+            seniorMaleNow: sumField('seniorMaleNow').toString(),
+            seniorFemaleNow: sumField('seniorFemaleNow').toString(),
+            totalInsideMaleNow: sumField('totalInsideMaleNow').toString(),
+            totalInsideFemaleNow: sumField('totalInsideFemaleNow').toString(),
             bold: true,
             color: gray1,
           ),
@@ -3989,16 +5145,24 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
     );
   }
 
+  ButtonStyle _cleanButtonStyle(Color color) {
+    return ElevatedButton.styleFrom(
+      backgroundColor: color,
+      foregroundColor: Colors.white,
+      elevation: 0,
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+    );
+  }
+
   Widget _buildDownloadButton() {
-    return Align(
-      alignment: Alignment.centerRight,
+    return Tooltip(
+      message: 'Download Excel report',
       child: ElevatedButton.icon(
-        onPressed: isDownloading ? null : _downloadExcel,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF0D743D),
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        ),
+        onPressed: (isDownloading || isSavingManualRows)
+            ? null
+            : _confirmSaveBeforeDownload,
+        style: _cleanButtonStyle(const Color(0xFF0D743D)),
         icon: isDownloading
             ? const SizedBox(
                 width: 16,
@@ -4008,7 +5172,7 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
                   color: Colors.white,
                 ),
               )
-            : const Icon(Icons.download),
+            : const Icon(Icons.download, size: 18),
         label: Text(
           isDownloading ? 'Downloading...' : 'Download Excel',
           style: GoogleFonts.poppins(
@@ -4016,6 +5180,56 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
             color: Colors.white,
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildSaveManualRowsButton() {
+    return Tooltip(
+      message: 'Save manual rows to database',
+      child: ElevatedButton.icon(
+        onPressed: isSavingManualRows
+            ? null
+            : () => _saveManualRowsToDatabase(showSuccess: true),
+        style: _cleanButtonStyle(const Color(0xFF1769AA)),
+        icon: isSavingManualRows
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            : const Icon(Icons.save, size: 18),
+        label: Text(
+          isSavingManualRows ? 'Saving...' : 'Save Manual Rows',
+          style: GoogleFonts.poppins(
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionButtons() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.start,
+      children: [
+        _buildSaveManualRowsButton(),
+        const SizedBox(width: 10),
+        _buildDownloadButton(),
+      ],
+    );
+  }
+
+  Widget _buildBottomAddRowButton() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: _buildAddManualRowIcon(),
       ),
     );
   }
@@ -4078,7 +5292,7 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _buildDownloadButton(),
+                            _buildActionButtons(),
                             const SizedBox(height: 8),
                             Text(
                               "Republic of the Philippines",
@@ -4101,6 +5315,7 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
 
                             const SizedBox(height: 6),
                             _buildReportTable(),
+                            _buildBottomAddRowButton(),
                           ],
                         ),
                       ),

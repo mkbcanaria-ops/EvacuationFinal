@@ -675,7 +675,7 @@ class _SignUpPageState extends State<SignUpPage> {
                             child: Wrap(
                               children: [
                                 Text(
-                                  "I confirm that the information provided is true and I agree to the ",
+                                  "I certify that my information is true and I voluntarily agree to the ",
                                   style: GoogleFonts.poppins(
                                     fontSize: 12.5,
                                     color: Colors.black87,
@@ -685,7 +685,7 @@ class _SignUpPageState extends State<SignUpPage> {
                                 GestureDetector(
                                   onTap: _showTermsDialog,
                                   child: Text(
-                                    "Terms & Privacy Policy",
+                                    "Terms, Consent & Data Privacy Agreement",
                                     style: GoogleFonts.poppins(
                                       fontSize: 12.5,
                                       color: primaryGreen,
@@ -986,10 +986,77 @@ class _SignUpPageState extends State<SignUpPage> {
   }
 
   void _showTermsDialog() {
+    Widget sectionTitle(String title) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 14, bottom: 6),
+        child: Text(
+          title,
+          style: GoogleFonts.poppins(
+            fontSize: 14.5,
+            fontWeight: FontWeight.w700,
+            color: darkGreen,
+          ),
+        ),
+      );
+    }
+
+    Widget paragraph(String text) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Text(
+          text,
+          textAlign: TextAlign.justify,
+          style: GoogleFonts.poppins(
+            fontSize: 13.5,
+            color: Colors.black87,
+            height: 1.65,
+          ),
+        ),
+      );
+    }
+
+    Widget bullet(String text) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Container(
+                width: 5,
+                height: 5,
+                decoration: const BoxDecoration(
+                  color: primaryGreen,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                text,
+                textAlign: TextAlign.justify,
+                style: GoogleFonts.poppins(
+                  fontSize: 13.5,
+                  color: Colors.black87,
+                  height: 1.6,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        titlePadding: const EdgeInsets.fromLTRB(24, 22, 24, 8),
+        contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         title: Row(
           children: [
             Container(
@@ -1000,14 +1067,14 @@ class _SignUpPageState extends State<SignUpPage> {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: const Icon(
-                Icons.verified_user_outlined,
+                Icons.privacy_tip_outlined,
                 color: primaryGreen,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                "Terms & Privacy Policy",
+                "Terms, Consent & Data Privacy Agreement",
                 style: GoogleFonts.poppins(
                   fontWeight: FontWeight.w700,
                   color: darkGreen,
@@ -1017,13 +1084,71 @@ class _SignUpPageState extends State<SignUpPage> {
             ),
           ],
         ),
-        content: SingleChildScrollView(
-          child: Text(
-            "By creating an account, you allow the MSWDO-Santa eCamp Management System to store and use your provided information for resident identification, evacuation assistance, emergency monitoring, and report generation. Your personal information will be handled with care and used only for system-related and emergency response purposes.",
-            style: GoogleFonts.poppins(
-              fontSize: 13.5,
-              color: Colors.black87,
-              height: 1.7,
+        content: SizedBox(
+          width: 720,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                paragraph(
+                  "By creating a resident account in the MSWDO-Santa eCamp Management System, I voluntarily certify that all information I provide is true, correct, complete, and accurate to the best of my knowledge. I understand that this account will be used for official resident identification, evacuation assistance, emergency monitoring, disaster response coordination, and report generation.",
+                ),
+
+                sectionTitle("1. Information Collected"),
+                paragraph(
+                  "I understand that the system may collect and process personal information such as my full name, address, contact number, email address, account credentials, barangay information, and other details necessary for resident identification and emergency response services. When applicable, additional information may be collected through related registration forms for evacuation, relief assistance, and social welfare purposes.",
+                ),
+
+                sectionTitle("2. Purpose of Collection and Use"),
+                paragraph(
+                  "I authorize the Municipal Social Welfare and Development Office (MSWDO) of Santa and its duly authorized personnel to collect, record, store, verify, update, retrieve, process, and use my submitted information for legitimate and official purposes, including but not limited to:",
+                ),
+                bullet(
+                  "Creating and maintaining resident evacuation profiles and barangay-based records.",
+                ),
+                bullet(
+                  "Identifying residents and families who may require assistance during disasters, emergencies, or evacuation operations.",
+                ),
+                bullet(
+                  "Supporting relief distribution, evacuation center management, monitoring, validation, and official reporting.",
+                ),
+                bullet(
+                  "Communicating important updates, verification requests, and emergency-related information when necessary.",
+                ),
+                bullet(
+                  "Coordinating with authorized government offices, emergency response units, and partner agencies for disaster preparedness, response, recovery, and social welfare services.",
+                ),
+
+                sectionTitle("3. Confidentiality and Data Protection"),
+                paragraph(
+                  "I understand that my personal information shall be handled with confidentiality and shall be used only for lawful and official public service purposes. The MSWDO-Santa eCamp Management System and its authorized personnel shall take reasonable measures to protect my information from unauthorized access, misuse, loss, alteration, disclosure, or any form of improper processing.",
+                ),
+
+                sectionTitle("4. Sharing of Information"),
+                paragraph(
+                  "I understand that my information may be shared only with authorized government agencies, emergency response units, or partner organizations when such sharing is necessary for disaster response, evacuation management, relief assistance, verification, public safety, reporting, or compliance with lawful requirements. My information shall not be sold or used for unrelated commercial purposes.",
+                ),
+
+                sectionTitle("5. Accuracy of Information"),
+                paragraph(
+                  "I acknowledge that I am responsible for providing accurate, updated, and complete information. I understand that false, incomplete, outdated, or misleading information may result in verification delays, correction requests, denial or suspension of related assistance, or other appropriate action in accordance with applicable rules and procedures.",
+                ),
+
+                sectionTitle("6. Account Security"),
+                paragraph(
+                  "I understand that I am responsible for keeping my account credentials confidential. I agree not to share my password or allow unauthorized persons to access my account. I understand that any activity made through my account may be subject to verification by authorized personnel.",
+                ),
+
+                sectionTitle("7. Data Access, Correction, and Concerns"),
+                paragraph(
+                  "I understand that I may request access to, correction of, or updating of my personal information, subject to identity verification and applicable MSWDO procedures. I may also raise concerns regarding the handling of my personal information through the proper office or authorized personnel.",
+                ),
+
+                sectionTitle("8. Consent and Agreement"),
+                paragraph(
+                  "By checking the agreement box and submitting this registration form, I confirm that I have read, understood, and voluntarily agree to these Terms, Consent, and Data Privacy provisions. I give my consent for the collection and processing of my information for the official purposes stated above.",
+                ),
+              ],
             ),
           ),
         ),
@@ -1050,7 +1175,7 @@ class _SignUpPageState extends State<SignUpPage> {
       await _showDialog(
         title: "Agreement Required",
         message:
-            "Please confirm the Terms & Privacy Policy before creating your resident evacuation account.",
+            "Please confirm the Terms, Consent, and Data Privacy Agreement before creating your resident evacuation account.",
         isError: true,
       );
       return;
