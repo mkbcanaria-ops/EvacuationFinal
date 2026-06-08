@@ -80,6 +80,8 @@ class _WebShowRegistrationPageFormWidgetState
   final TextEditingController _headSurnameController = TextEditingController();
   final TextEditingController _headFirstController = TextEditingController();
   final TextEditingController _headMiddleController = TextEditingController();
+  final TextEditingController _headCodeController = TextEditingController();
+  final TextEditingController _headRemarksController = TextEditingController();
   final TextEditingController _headAgeController = TextEditingController();
   final TextEditingController _headSexController =
       TextEditingController(); // Holds "M" or "F"
@@ -282,6 +284,8 @@ class _WebShowRegistrationPageFormWidgetState
         'Head_Surname': _headSurnameController.text,
         'Head_Age': int.tryParse(_headAgeController.text) ?? 0,
         'Head_Sex': _headSexController.text,
+        'Head_Code': _headCodeController.text.trim(),
+        'Head_Remarks': _headRemarksController.text.trim(),
         'Date_of_Birth': _dobController.text,
         'Occupation': _occupationController.text,
         'Monthly_Income': double.tryParse(_monthlyIncomeController.text) ?? 0,
@@ -381,9 +385,11 @@ class _WebShowRegistrationPageFormWidgetState
       await _checkSickMembersAndAssign(registrationId);
     } catch (e) {
       debugPrint('❌ Error updating registration: $e');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('❌ Error updating data: $e')));
+      if (!mounted) return;
+      await _showDeploymentIssueDialog(
+        'Update Failed',
+        'The system could not save the registration changes. Please check your data and try again.\n\nDetails: $e',
+      );
     }
   }
 
@@ -393,15 +399,29 @@ class _WebShowRegistrationPageFormWidgetState
 
   Future<void> _checkSickMembersAndAssign(String registrationId) async {
     if (!mounted) return;
+
     final supabase = Supabase.instance.client;
     final String headBarangay = _brgyController.text.trim();
+    final String headSite = _evacSiteController.text.trim();
+    const String rhuSite = 'Santa RHU';
 
-    // Only consider rows with meaningful data
+    String _clean(String value) => value.trim();
+
+    // Include rows that have at least one meaningful value.
+    // IMPORTANT: code and remarks are included here so a member with a code
+    // will not be ignored even if only a few fields were filled out.
     final allMembersWithData = _familyRows.where((row) {
       return [
         row['name']?.text,
         row['relation']?.text,
         row['birthdate']?.text,
+        row['age']?.text,
+        row['gender']?.text,
+        row['civilStatus']?.text,
+        row['education']?.text,
+        row['skills']?.text,
+        row['remarks']?.text,
+        row['code']?.text,
       ].any((f) => f != null && f.trim().isNotEmpty);
     }).toList();
 
@@ -409,25 +429,33 @@ class _WebShowRegistrationPageFormWidgetState
       String dobText,
       TextEditingController? ageCtrl,
     ) {
-      if (dobText.trim().isNotEmpty) {
+      final dob = dobText.trim();
+
+      if (dob.isNotEmpty) {
         try {
-          final DateTime? bd = DateTime.tryParse(dobText.trim());
+          DateTime? bd = DateTime.tryParse(dob);
+
+          // Some of your head DOB values are saved like "Jan, 1, 2000".
+          // DateTime.tryParse cannot always read that format, so keep age fallback.
+          bd ??= DateFormat('MMM, d, yyyy').tryParse(dob);
+
           if (bd == null) {
             return ageCtrl?.text.trim().isNotEmpty == true
                 ? ageCtrl!.text.trim()
                 : '0';
           }
+
           return calculateAge(bd);
         } catch (_) {
           return ageCtrl?.text.trim().isNotEmpty == true
               ? ageCtrl!.text.trim()
               : '0';
         }
-      } else {
-        return ageCtrl?.text.trim().isNotEmpty == true
-            ? ageCtrl!.text.trim()
-            : '0';
       }
+
+      return ageCtrl?.text.trim().isNotEmpty == true
+          ? ageCtrl!.text.trim()
+          : '0';
     }
 
     String _formatTimeDeployed(DateTime dateTime) {
@@ -449,7 +477,6 @@ class _WebShowRegistrationPageFormWidgetState
       final month = months[dateTime.month - 1];
       final day = dateTime.day;
       final year = dateTime.year;
-
       final hour12 = dateTime.hour % 12 == 0 ? 12 : dateTime.hour % 12;
       final minute = dateTime.minute.toString().padLeft(2, '0');
       final period = dateTime.hour >= 12 ? 'PM' : 'AM';
@@ -457,302 +484,588 @@ class _WebShowRegistrationPageFormWidgetState
       return '$month $day, $year | $hour12:$minute $period';
     }
 
-    final membersWithCode = allMembersWithData
-        .where((row) => (row['code']?.text ?? '').isNotEmpty)
-        .toList();
-
-    final potentialHelpers = allMembersWithData
-        .where((row) => !membersWithCode.contains(row))
-        .toList();
-
     final nowDateTime = DateTime.now();
     final now = nowDateTime.toIso8601String();
     final formattedTimeDeployed = _formatTimeDeployed(nowDateTime);
-    final headSite = _evacSiteController.text;
 
-    Map<String, Object> _buildHeadEntry() {
-      final headFullName =
-          '${_headSurnameController.text} ${_headFirstController.text} ${_headMiddleController.text}'
-              .trim();
+    final String headFullName = [
+      _headSurnameController.text,
+      _headFirstController.text,
+      _headMiddleController.text,
+    ].map((e) => e.trim()).where((e) => e.isNotEmpty).join(' ');
 
+    final bool headHasData = headFullName.trim().isNotEmpty;
+    final bool headHasCode = _headCodeController.text.trim().isNotEmpty;
+
+    final membersWithCode = allMembersWithData.where((row) {
+      return (row['code']?.text ?? '').trim().isNotEmpty;
+    }).toList();
+
+    final membersWithoutCode = allMembersWithData.where((row) {
+      return (row['code']?.text ?? '').trim().isEmpty;
+    }).toList();
+
+    final bool hasAnyCode = headHasCode || membersWithCode.isNotEmpty;
+
+    Map<String, dynamic> _buildMemberEntry(
+      Map<String, TextEditingController> member,
+      String siteValue,
+    ) {
+      final ageValue = _ageFromDobOrFallback(
+        member['birthdate']?.text ?? '',
+        member['age'],
+      );
+
+      return <String, dynamic>{
+        'UID': widget.uid,
+        'Registration_ID': registrationId,
+        'Family_Member': _clean(member['name']?.text ?? ''),
+        'Relation': _clean(member['relation']?.text ?? ''),
+        'Age': ageValue,
+        'Gender': _clean(member['gender']?.text ?? ''),
+        'Civil_Status': _clean(member['civilStatus']?.text ?? ''),
+        'Education': _clean(member['education']?.text ?? ''),
+        'Occupational_Skills': _clean(member['skills']?.text ?? ''),
+        'Remarks': _clean(member['remarks']?.text ?? ''),
+        'Code': _clean(member['code']?.text ?? ''),
+        'Date_of_Birth': _clean(member['birthdate']?.text ?? ''),
+        'Barangay': headBarangay,
+        'Site': siteValue,
+        'Date_Transferred': now,
+        'Time_Deployed': formattedTimeDeployed,
+        '4Ps_Families': _is4PsBeneficiary,
+      };
+    }
+
+    Map<String, dynamic> _buildHeadEntry(String siteValue) {
       final headAgeValue = _ageFromDobOrFallback(
         _dobController.text,
         _headAgeController,
       );
 
-      return <String, Object>{
+      // Keep the head row using the same common columns as family members.
+      // This avoids Evacuation_B insert failure when Evacuation_B does not have
+      // the extra Head_* columns.
+      return <String, dynamic>{
         'UID': widget.uid,
         'Registration_ID': registrationId,
         'Family_Member': headFullName,
         'Relation': 'Head of Family',
         'Age': headAgeValue,
-        'Gender': _headSexController.text,
+        'Gender': _clean(_headSexController.text),
         'Civil_Status': _single
             ? 'Single'
             : _married
             ? 'Married'
             : _widowed
             ? 'Widowed'
-            : _civilOtherController.text,
+            : _clean(_civilOtherController.text),
         'Education': '',
-        'Occupational_Skills': _occupationController.text,
-        'Remarks': 'Head of family entry',
-        'Code': '',
-        'Head_Surname': _headSurnameController.text,
-        'Head_Firstname': _headFirstController.text,
-        'Head_Middlename': _headMiddleController.text,
-        'Head_Occupation': _occupationController.text,
-        'Head_Monthly_Income':
-            double.tryParse(_monthlyIncomeController.text) ?? 0.0,
-        'City': _cityController.text,
-        'Municipality': _munController.text,
+        'Occupational_Skills': _clean(_occupationController.text),
+        'Remarks': _headRemarksController.text.trim().isNotEmpty
+            ? _clean(_headRemarksController.text)
+            : 'Head of family entry',
+        'Code': _clean(_headCodeController.text),
+        'Date_of_Birth': _clean(_dobController.text),
         'Barangay': headBarangay,
-        'Site': headSite,
+        'Site': siteValue,
         'Date_Transferred': now,
         'Time_Deployed': formattedTimeDeployed,
-        'Date_of_Birth': _dobController.text,
         '4Ps_Families': _is4PsBeneficiary,
       };
     }
 
-    // Step 0: Check if anyone is already in Evacuation_A or B
-    final existingEvacResidents = await supabase
-        .from('Evacuation_A')
-        .select('Family_Member')
-        .eq('UID', widget.uid)
-        .then((aRows) async {
-          final bRows = await supabase
-              .from('Evacuation_B')
-              .select('Family_Member')
-              .eq('UID', widget.uid);
-          return [
-            ...aRows.map((e) => e['Family_Member']?.toString() ?? ''),
-            ...bRows.map((e) => e['Family_Member']?.toString() ?? ''),
-          ];
-        });
-
-    final alreadyInEvacuation = <String>[];
-
-    // Members
-    for (var member in allMembersWithData) {
-      final memberName = member['name']?.text ?? '';
-      if (existingEvacResidents.contains(memberName)) {
-        alreadyInEvacuation.add(memberName);
-      }
-    }
-
-    // Head
-    final headFullName =
-        '${_headSurnameController.text} ${_headFirstController.text} ${_headMiddleController.text}'
-            .trim();
-
-    if (existingEvacResidents.contains(headFullName)) {
-      alreadyInEvacuation.add(headFullName);
-    }
-
-    // If already assigned → show modal + return
-    if (alreadyInEvacuation.isNotEmpty) {
-      if (!mounted) return;
-
-      showDialog(
+    Future<bool> _showCodeConfirmationDialog(
+      List<Map<String, String>> codedResidents,
+    ) async {
+      final result = await showDialog<bool>(
         context: context,
         barrierDismissible: false,
-        builder: (ctx) => Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: const [
-                    Icon(
-                      Icons.warning_amber_rounded,
-                      color: Colors.orange,
-                      size: 32,
-                    ),
-                    SizedBox(width: 10),
-                    Expanded(
+        builder: (dialogContext) {
+          return Dialog(
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 26,
+              vertical: 26,
+            ),
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(26, 24, 26, 22),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0D743D).withOpacity(0.10),
+                        borderRadius: BorderRadius.circular(50),
+                        border: Border.all(
+                          color: const Color(0xFF0D743D).withOpacity(0.22),
+                        ),
+                      ),
                       child: Text(
-                        'Already Assigned',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
+                        'DEPLOYMENT CONFIRMATION',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF0D743D),
+                          letterSpacing: 0.8,
                         ),
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 200),
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'The following resident(s) are already in the evacuation list:',
-                          style: TextStyle(fontSize: 16),
+                    const SizedBox(height: 18),
+                    Container(
+                      width: 82,
+                      height: 82,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: const Color(0xFFFFF3E0),
+                        border: Border.all(
+                          color: Colors.orange.withOpacity(0.35),
+                          width: 1.5,
                         ),
-                        const SizedBox(height: 8),
-                        ...alreadyInEvacuation.map(
-                          (name) => Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 2),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.person,
-                                  size: 20,
-                                  color: Colors.grey,
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    name,
-                                    style: const TextStyle(fontSize: 16),
+                      ),
+                      child: const Center(
+                        child: Icon(
+                          Icons.health_and_safety_rounded,
+                          color: Colors.orange,
+                          size: 50,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      'Special Condition Detected',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.poppins(
+                        fontSize: 23,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'One or more residents in this family have a code. These coded residents will be deployed to Santa RHU, while non-coded residents will be deployed to the selected evacuation site.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        height: 1.45,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Container(
+                      width: double.infinity,
+                      constraints: const BoxConstraints(maxHeight: 230),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAF9),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.grey[300]!),
+                      ),
+                      child: SingleChildScrollView(
+                        child: Column(
+                          children: codedResidents.map((resident) {
+                            final name = resident['name'] ?? '';
+                            final code = resident['code'] ?? '';
+                            final remarks = resident['remarks'] ?? '';
+
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.grey[200]!),
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    width: 34,
+                                    height: 34,
+                                    decoration: const BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: Color(0xFFE8F5EE),
+                                    ),
+                                    child: const Icon(
+                                      Icons.person_rounded,
+                                      color: Color(0xFF0D743D),
+                                      size: 20,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          name,
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.black87,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          remarks.trim().isNotEmpty
+                                              ? 'Code: $code  •  Remarks: $remarks'
+                                              : 'Code: $code',
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 13,
+                                            color: Colors.grey[700],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () =>
+                                Navigator.pop(dialogContext, false),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 15),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              side: BorderSide(color: Colors.grey[400]!),
+                            ),
+                            child: Text(
+                              'Review First',
+                              style: GoogleFonts.poppins(
+                                fontWeight: FontWeight.w700,
+                                color: Colors.grey[800],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () => Navigator.pop(dialogContext, true),
+                            icon: const Icon(
+                              Icons.check_circle_outline_rounded,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                            label: Text(
+                              'Confirm Deploy',
+                              style: GoogleFonts.poppins(
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 15),
+                              backgroundColor: const Color(0xFF0D743D),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
                             ),
                           ),
                         ),
                       ],
                     ),
-                  ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
+          );
+        },
       );
 
-      Future.delayed(const Duration(seconds: 3), () {
-        if (mounted) {
-          Navigator.of(context).pop();
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(builder: (_) => const WebMainDashboard()),
-            (route) => false,
-          );
-        }
-      });
+      return result == true;
+    }
+
+    // Build the final deployment lists FIRST.
+    // Coded residents always go to Evacuation_B / Santa RHU.
+    // Non-coded residents go to Evacuation_A / selected site.
+    final List<Map<String, dynamic>> evacAInserts = [];
+    final List<Map<String, dynamic>> evacBInserts = [];
+
+    if (hasAnyCode) {
+      final codedResidents = <Map<String, String>>[];
+
+      if (headHasCode && headHasData) {
+        codedResidents.add({
+          'name': headFullName,
+          'code': _clean(_headCodeController.text),
+          'remarks': _clean(_headRemarksController.text),
+        });
+      }
+
+      for (final member in membersWithCode) {
+        final memberName = _clean(member['name']?.text ?? '');
+        codedResidents.add({
+          'name': memberName.isNotEmpty ? memberName : 'Unnamed Family Member',
+          'code': _clean(member['code']?.text ?? ''),
+          'remarks': _clean(member['remarks']?.text ?? ''),
+        });
+      }
+
+      final confirmDeploy = await _showCodeConfirmationDialog(codedResidents);
+      if (!confirmDeploy) return;
+
+      if (headHasCode && headHasData) {
+        evacBInserts.add(_buildHeadEntry(rhuSite));
+      } else if (headHasData) {
+        evacAInserts.add(_buildHeadEntry(headSite));
+      }
+
+      for (final member in membersWithCode) {
+        evacBInserts.add(_buildMemberEntry(member, rhuSite));
+      }
+
+      for (final member in membersWithoutCode) {
+        evacAInserts.add(_buildMemberEntry(member, headSite));
+      }
+    } else {
+      if (headHasData) {
+        evacAInserts.add(_buildHeadEntry(headSite));
+      }
+
+      for (final member in allMembersWithData) {
+        evacAInserts.add(_buildMemberEntry(member, headSite));
+      }
+    }
+
+    if (evacAInserts.isEmpty && evacBInserts.isEmpty) {
+      if (!mounted) return;
+      await _showDeploymentIssueDialog(
+        'No Residents to Deploy',
+        'Please complete at least one head of family or family member record before deploying.',
+      );
       return;
     }
 
-    // NO CODE assigned → everyone goes to Evacuation_A
-    if (membersWithCode.isEmpty) {
-      final List<Map<String, Object>> evacAInserts = allMembersWithData.map((
-        member,
-      ) {
-        final ageValue = _ageFromDobOrFallback(
-          member['birthdate']?.text ?? '',
-          member['age'],
+    // IMPORTANT FIX:
+    // The old code stopped when a resident was already found in Evacuation_A/B.
+    // That made coded residents stay in Evacuation_A and never move to RHU.
+    // This refreshes the deployment for this UID, then reinserts the current data.
+    try {
+      await supabase.from('Evacuation_A').delete().eq('UID', widget.uid);
+      await supabase.from('Evacuation_B').delete().eq('UID', widget.uid);
+    } catch (e) {
+      debugPrint('❌ Failed to clear old evacuation records: $e');
+      if (!mounted) return;
+      await _showDeploymentIssueDialog(
+        'Unable to Refresh Deployment',
+        'The system could not refresh the previous evacuation record. Please try again.\n\nDetails: $e',
+      );
+      return;
+    }
+
+    bool okA = true;
+    bool okB = true;
+    String? errorA;
+    String? errorB;
+
+    try {
+      if (evacAInserts.isNotEmpty) {
+        debugPrint(
+          '📌 Inserting ${evacAInserts.length} resident(s) to Evacuation_A',
         );
-
-        return <String, Object>{
-          'UID': widget.uid,
-          'Registration_ID': registrationId,
-          'Family_Member': member['name']?.text ?? '',
-          'Relation': member['relation']?.text ?? '',
-          'Age': ageValue,
-          'Gender': member['gender']?.text ?? '',
-          'Civil_Status': member['civilStatus']?.text ?? '',
-          'Education': member['education']?.text ?? '',
-          'Occupational_Skills': member['skills']?.text ?? '',
-          'Remarks': member['remarks']?.text ?? '',
-          'Code': member['code']?.text ?? '',
-          'Date_of_Birth': member['birthdate']?.text ?? '',
-          'Barangay': headBarangay,
-          'Site': headSite,
-          'Date_Transferred': now,
-          'Time_Deployed': formattedTimeDeployed,
-          '4Ps_Families': _is4PsBeneficiary,
-        };
-      }).toList();
-
-      evacAInserts.add(_buildHeadEntry());
-
-      try {
         await supabase.from('Evacuation_A').insert(evacAInserts);
-      } catch (e) {
-        debugPrint('❌ Error inserting Evacuation_A: $e');
+      }
+    } catch (e) {
+      okA = false;
+      errorA = e.toString();
+      debugPrint('❌ Evacuation_A insert failed: $e');
+    }
+
+    try {
+      if (evacBInserts.isNotEmpty) {
+        debugPrint(
+          '📌 Inserting ${evacBInserts.length} coded resident(s) to Evacuation_B / $rhuSite',
+        );
+        await supabase.from('Evacuation_B').insert(evacBInserts);
+      }
+    } catch (e) {
+      okB = false;
+      errorB = e.toString();
+      debugPrint('❌ Evacuation_B insert failed: $e');
+    }
+
+    if (!mounted) return;
+
+    if (okA && okB) {
+      await _showInsertSuccessDialog(
+        context,
+        evacAInserts.length,
+        evacBInserts.length,
+      );
+    } else {
+      final message = StringBuffer(
+        'The deployment was not completed. Please review the details below and try again.',
+      );
+      if (errorA != null) {
+        message.write('\n\nEvacuation_A: $errorA');
+      }
+      if (errorB != null) {
+        message.write('\n\nEvacuation_B: $errorB');
       }
 
-      if (!mounted) return;
+      await _showDeploymentIssueDialog(
+        'Deployment Not Completed',
+        message.toString(),
+      );
+    }
+  }
 
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (dCtx) => Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+  // ...existing code...
+
+  Widget _buildDeploymentSummaryRow(String label, int count, IconData icon) {
+    return Row(
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: const Color(0xFF0D743D).withOpacity(0.10),
           ),
+          child: Icon(icon, color: const Color(0xFF0D743D), size: 21),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            label,
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0D743D).withOpacity(0.10),
+            borderRadius: BorderRadius.circular(50),
+          ),
+          child: Text(
+            '$count',
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: const Color(0xFF0D743D),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _showDeploymentIssueDialog(String title, String message) async {
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 26, vertical: 26),
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(26, 26, 26, 22),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  width: 85,
-                  height: 85,
+                  width: 82,
+                  height: 82,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: const Color(0xFF0D743D).withOpacity(0.15),
+                    color: Colors.red.withOpacity(0.10),
+                    border: Border.all(
+                      color: Colors.red.withOpacity(0.25),
+                      width: 1.5,
+                    ),
                   ),
                   child: const Center(
                     child: Icon(
-                      Icons.check_circle,
-                      color: Color(0xFF0D743D),
-                      size: 65,
+                      Icons.error_outline_rounded,
+                      color: Colors.red,
+                      size: 52,
                     ),
                   ),
                 ),
                 const SizedBox(height: 18),
                 Text(
-                  'Resident Successfully Evacuated',
+                  title,
                   textAlign: TextAlign.center,
                   style: GoogleFonts.poppins(
                     fontSize: 22,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black87,
                   ),
                 ),
                 const SizedBox(height: 10),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 250),
+                Container(
+                  width: double.infinity,
+                  constraints: const BoxConstraints(maxHeight: 190),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF7F7),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.red.withOpacity(0.15)),
+                  ),
                   child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: evacAInserts.map((entry) {
-                        final name = entry['Family_Member']?.toString() ?? '';
-                        final relation = entry['Relation']?.toString() ?? '';
-                        final isHead = relation == 'Head of Family';
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 2),
-                          child: Row(
-                            children: [
-                              Icon(
-                                isHead ? Icons.star : Icons.person,
-                                size: 20,
-                                color: isHead ? Colors.amber : Colors.grey,
-                              ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  '$name ($relation)',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: isHead
-                                        ? FontWeight.bold
-                                        : FontWeight.normal,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }).toList(),
+                    child: Text(
+                      message,
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        height: 1.45,
+                        color: Colors.grey[800],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 22),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      backgroundColor: const Color(0xFF0D743D),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: Text(
+                      'Got it',
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
@@ -760,348 +1073,9 @@ class _WebShowRegistrationPageFormWidgetState
             ),
           ),
         ),
-      );
-
-      Future.delayed(const Duration(seconds: 3), () {
-        if (mounted) {
-          Navigator.of(context).pop();
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(builder: (_) => const WebMainDashboard()),
-            (route) => false,
-          );
-        }
-      });
-      return;
-    }
-
-    // ------------------------------------------------------------
-    // STEP 3: CODE MEMBER LOGIC
-    // ------------------------------------------------------------
-    String? selectedHelper = potentialHelpers.isNotEmpty
-        ? potentialHelpers.first['name']?.text
-        : null;
-
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return Dialog(
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 24,
-            vertical: 24,
-          ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Assign In-Charge',
-                  style: GoogleFonts.poppins(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Select a family member to oversee all members with a code.',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    color: Colors.grey[700],
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Members with a Code:',
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey[800],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[100],
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    membersWithCode
-                        .map((e) => e['name']?.text ?? '')
-                        .join(', '),
-                    style: GoogleFonts.poppins(fontSize: 14),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Select In-Charge:',
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey[800],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                StatefulBuilder(
-                  builder: (context, setDialogState) {
-                    return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey[300]!),
-                      ),
-                      child: DropdownButton<String>(
-                        value: selectedHelper,
-                        isExpanded: true,
-                        underline: const SizedBox(),
-                        items: potentialHelpers
-                            .map(
-                              (row) => DropdownMenuItem(
-                                value: row['name']?.text ?? '',
-                                child: Text(row['name']?.text ?? ''),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (val) =>
-                            setDialogState(() => selectedHelper = val),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 24),
-
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(dialogContext),
-                        style: OutlinedButton.styleFrom(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          side: BorderSide(color: Colors.grey[400]!),
-                        ),
-                        child: Text(
-                          'Cancel',
-                          style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w600,
-                            color: Colors.grey[800],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () async {
-                          Navigator.pop(dialogContext);
-
-                          try {
-                            final nowLocal = DateTime.now().toIso8601String();
-
-                            List<Map<String, Object>> evacBInserts = [];
-                            List<Map<String, Object>> evacAInserts = [];
-
-                            // 1️⃣ CODED MEMBERS → EVAC B
-                            for (var member in membersWithCode) {
-                              final ageValue = _ageFromDobOrFallback(
-                                member['birthdate']?.text ?? '',
-                                member['age'],
-                              );
-
-                              evacBInserts.add({
-                                'UID': widget.uid,
-                                'Registration_ID': registrationId,
-                                'Family_Member': member['name']?.text ?? '',
-                                'Relation': member['relation']?.text ?? '',
-                                'Age': ageValue,
-                                'Gender': member['gender']?.text ?? '',
-                                'Civil_Status':
-                                    member['civilStatus']?.text ?? '',
-                                'Education': member['education']?.text ?? '',
-                                'Occupational_Skills':
-                                    member['skills']?.text ?? '',
-                                'Remarks': member['remarks']?.text ?? '',
-                                'Code': member['code']?.text ?? '',
-                                'Date_of_Birth':
-                                    member['birthdate']?.text ?? '',
-                                'Barangay': headBarangay,
-                                'Site': 'Santa RHU',
-                                'Date_Transferred': nowLocal,
-                                'Time_Deployed': formattedTimeDeployed,
-                                '4Ps_Families': _is4PsBeneficiary,
-                              });
-                            }
-
-                            // 2️⃣ SELECTED HELPER → EVAC B
-                            final helperRow = allMembersWithData.firstWhere(
-                              (row) => row['name']?.text == selectedHelper,
-                            );
-
-                            final helperAgeValue = _ageFromDobOrFallback(
-                              helperRow['birthdate']?.text ?? '',
-                              helperRow['age'],
-                            );
-
-                            evacBInserts.add({
-                              'UID': widget.uid,
-                              'Registration_ID': registrationId,
-                              'Family_Member': selectedHelper ?? '',
-                              'Relation': helperRow['relation']?.text ?? '',
-                              'Age': helperAgeValue,
-                              'Gender': helperRow['gender']?.text ?? '',
-                              'Civil_Status':
-                                  helperRow['civilStatus']?.text ?? '',
-                              'Education': helperRow['education']?.text ?? '',
-                              'Occupational_Skills':
-                                  helperRow['skills']?.text ?? '',
-                              'Remarks': helperRow['remarks']?.text ?? '',
-                              'Code': 'Assign',
-                              'Date_of_Birth':
-                                  helperRow['birthdate']?.text ?? '',
-                              'Barangay': headBarangay,
-                              'Site': 'Santa RHU',
-                              'Date_Transferred': nowLocal,
-                              'Time_Deployed': formattedTimeDeployed,
-                              '4Ps_Families': _is4PsBeneficiary,
-                            });
-
-                            // 3️⃣ ALL OTHER MEMBERS → EVAC A
-                            final usedNames = {
-                              ...membersWithCode.map(
-                                (m) => m['name']?.text ?? '',
-                              ),
-                              selectedHelper ?? '',
-                            };
-
-                            for (var member in allMembersWithData) {
-                              if (!usedNames.contains(
-                                member['name']?.text ?? '',
-                              )) {
-                                final ageValue = _ageFromDobOrFallback(
-                                  member['birthdate']?.text ?? '',
-                                  member['age'],
-                                );
-
-                                evacAInserts.add({
-                                  'UID': widget.uid,
-                                  'Registration_ID': registrationId,
-                                  'Family_Member': member['name']?.text ?? '',
-                                  'Relation': member['relation']?.text ?? '',
-                                  'Age': ageValue,
-                                  'Gender': member['gender']?.text ?? '',
-                                  'Civil_Status':
-                                      member['civilStatus']?.text ?? '',
-                                  'Education': member['education']?.text ?? '',
-                                  'Occupational_Skills':
-                                      member['skills']?.text ?? '',
-                                  'Remarks': member['remarks']?.text ?? '',
-                                  'Code': member['code']?.text ?? '',
-                                  'Date_of_Birth':
-                                      member['birthdate']?.text ?? '',
-                                  'Barangay': headBarangay,
-                                  'Site': headSite,
-                                  'Date_Transferred': nowLocal,
-                                  'Time_Deployed': formattedTimeDeployed,
-                                  '4Ps_Families': _is4PsBeneficiary,
-                                });
-                              }
-                            }
-
-                            // 4️⃣ ADD HEAD TO EVAC A
-                            evacAInserts.add(_buildHeadEntry());
-
-                            // 5️⃣ INSERT TO DB
-                            bool okA = true;
-                            bool okB = true;
-
-                            try {
-                              await supabase
-                                  .from('Evacuation_B')
-                                  .insert(evacBInserts);
-                            } catch (e) {
-                              okB = false;
-                              debugPrint('❌ Evacuation_B insert failed: $e');
-                            }
-
-                            try {
-                              await supabase
-                                  .from('Evacuation_A')
-                                  .insert(evacAInserts);
-                            } catch (e) {
-                              okA = false;
-                              debugPrint('❌ Evacuation_A insert failed: $e');
-                            }
-
-                            if (mounted) {
-                              if (okA && okB) {
-                                await _showInsertSuccessDialog(
-                                  context,
-                                  evacAInserts.length,
-                                  evacBInserts.length,
-                                );
-                              } else {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      '⚠ Partial Success → A: ${okA ? "OK" : "FAILED"}, B: ${okB ? "OK" : "FAILED"}',
-                                    ),
-                                  ),
-                                );
-                              }
-                            }
-                          } catch (e) {
-                            debugPrint('❌ Error in Code Assignment: $e');
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('❌ Error: $e')),
-                              );
-                            }
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          backgroundColor: const Color(0xFF0D743D),
-                        ),
-                        child: Text(
-                          'Assign',
-                          style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+      ),
     );
   }
-  // ...existing code...
 
   Future<void> _showInsertSuccessDialog(
     BuildContext context,
@@ -1110,65 +1084,130 @@ class _WebShowRegistrationPageFormWidgetState
   ) async {
     if (!mounted) return;
 
-    // Build the dialog and display it
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (dCtx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 85,
-                height: 85,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: const Color(0xFF0D743D).withOpacity(0.15),
-                ),
-                child: const Center(
-                  child: Icon(
-                    Icons.check_circle,
-                    color: Color(0xFF0D743D),
-                    size: 65,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 26, vertical: 26),
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 500),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(26, 26, 26, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 92,
+                  height: 92,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xFF0D743D).withOpacity(0.12),
+                    border: Border.all(
+                      color: const Color(0xFF0D743D).withOpacity(0.28),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.verified_rounded,
+                      color: Color(0xFF0D743D),
+                      size: 60,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 18),
-              Text(
-                'Resident Successfully Evacuated',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.poppins(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
+                const SizedBox(height: 20),
+                Text(
+                  'Deployment Completed',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black87,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              // Summary counts
-              Text(
-                'Evacuation_A: $evacACount item${evacACount == 1 ? '' : 's'}\n'
-                'Evacuation_B: $evacBCount item${evacBCount == 1 ? '' : 's'}',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.poppins(fontSize: 14),
-              ),
-            ],
+                const SizedBox(height: 10),
+                Text(
+                  'The registration record was updated and the residents were successfully deployed to their assigned evacuation areas.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    height: 1.45,
+                    color: Colors.grey[700],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAF9),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.grey[300]!),
+                  ),
+                  child: Column(
+                    children: [
+                      _buildDeploymentSummaryRow(
+                        'Standard Evacuation Site',
+                        evacACount,
+                        Icons.home_work_rounded,
+                      ),
+                      const SizedBox(height: 10),
+                      _buildDeploymentSummaryRow(
+                        'Santa RHU',
+                        evacBCount,
+                        Icons.local_hospital_rounded,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.4,
+                        color: const Color(0xFF0D743D),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Redirecting to Main Dashboard...',
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
 
-    // Auto-close after a short delay and navigate back to dashboard
-    Future.delayed(const Duration(seconds: 3), () {
-      if (!mounted) return;
-      Navigator.of(context).pop(); // close dialog
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const WebMainDashboard()),
-        (route) => false,
-      );
-    });
+    await Future.delayed(const Duration(seconds: 2));
+
+    if (!mounted) return;
+
+    if (Navigator.of(context, rootNavigator: true).canPop()) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const WebMainDashboard()),
+      (route) => false,
+    );
   }
 
   Future<void> _fetchRegistrationDetails() async {
@@ -1221,6 +1260,10 @@ class _WebShowRegistrationPageFormWidgetState
       _headAgeController.text =
           registrationResponse['Head_Age']?.toString() ?? '';
       _headSexController.text = registrationResponse['Head_Sex'] ?? '';
+      _headCodeController.text =
+          registrationResponse['Head_Code']?.toString() ?? '';
+      _headRemarksController.text =
+          registrationResponse['Head_Remarks']?.toString() ?? '';
 
       _dobController.text = registrationResponse['Date_of_Birth'] ?? '';
       _occupationController.text = registrationResponse['Occupation'] ?? '';
@@ -1880,18 +1923,16 @@ class _WebShowRegistrationPageFormWidgetState
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Left: Name fields
+        // Left: Head name fields + Code
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Add more padding to move header further to the right
               Padding(
                 padding: const EdgeInsets.only(left: 130.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Header
                     Text(
                       'HEAD OF THE FAMILY',
                       style: GoogleFonts.poppins(
@@ -1900,23 +1941,21 @@ class _WebShowRegistrationPageFormWidgetState
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Container(
-                      width: 250, // line width under header
-                      height: 2,
-                      color: Colors.black87,
-                    ),
+                    Container(width: 250, height: 2, color: Colors.black87),
                   ],
                 ),
               ),
+
               const SizedBox(height: 12),
-              // Row for Surname / First / Middle
+
+              // Names row
               Row(
                 children: [
-                  // Surname
                   SizedBox(
                     width: 160,
                     child: TextField(
                       controller: _headSurnameController,
+                      textAlign: TextAlign.center,
                       decoration: const InputDecoration(
                         hintText: 'Surname',
                         border: UnderlineInputBorder(),
@@ -1925,11 +1964,11 @@ class _WebShowRegistrationPageFormWidgetState
                     ),
                   ),
                   const SizedBox(width: 20),
-                  // First Name
                   SizedBox(
                     width: 160,
                     child: TextField(
                       controller: _headFirstController,
+                      textAlign: TextAlign.center,
                       decoration: const InputDecoration(
                         hintText: 'First Name',
                         border: UnderlineInputBorder(),
@@ -1938,11 +1977,11 @@ class _WebShowRegistrationPageFormWidgetState
                     ),
                   ),
                   const SizedBox(width: 20),
-                  // Middle Name
                   SizedBox(
                     width: 160,
                     child: TextField(
                       controller: _headMiddleController,
+                      textAlign: TextAlign.center,
                       decoration: const InputDecoration(
                         hintText: 'Middle Name',
                         border: UnderlineInputBorder(),
@@ -1952,16 +1991,33 @@ class _WebShowRegistrationPageFormWidgetState
                   ),
                 ],
               ),
+
+              const SizedBox(height: 18),
+
+              // Code under the names
+              Padding(
+                padding: const EdgeInsets.only(left: 180.0),
+                child: SizedBox(
+                  width: 180,
+                  child: TextField(
+                    controller: _headCodeController,
+                    textAlign: TextAlign.center,
+                    decoration: const InputDecoration(
+                      hintText: 'Code',
+                      border: UnderlineInputBorder(),
+                    ),
+                    style: GoogleFonts.poppins(fontSize: 22),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
 
-        // Add padding to push Age & Sex further to the right
+        // Right: Age, Sex + Remarks
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.only(
-              left: 220.0,
-            ), // adjust this value to move further right
+            padding: const EdgeInsets.only(left: 220.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1972,8 +2028,10 @@ class _WebShowRegistrationPageFormWidgetState
                   fontSize: 22,
                   labelFontSize: 22,
                 ),
+
                 const SizedBox(height: 12),
-                // Sex label and choices in a row
+
+                // Sex
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
@@ -1985,7 +2043,7 @@ class _WebShowRegistrationPageFormWidgetState
                       ),
                     ),
                     const SizedBox(width: 12),
-                    // Male
+
                     _buildCheckBox('M', _headSexController.text == 'M', (val) {
                       setState(() {
                         if (val!) {
@@ -1995,8 +2053,9 @@ class _WebShowRegistrationPageFormWidgetState
                         }
                       });
                     }),
+
                     const SizedBox(width: 10),
-                    // Female
+
                     _buildCheckBox('F', _headSexController.text == 'F', (val) {
                       setState(() {
                         if (val!) {
@@ -2007,6 +2066,22 @@ class _WebShowRegistrationPageFormWidgetState
                       });
                     }),
                   ],
+                ),
+
+                const SizedBox(height: 18),
+
+                // Remarks under Age and Sex
+                SizedBox(
+                  width: 340,
+                  child: TextField(
+                    controller: _headRemarksController,
+                    textAlign: TextAlign.center,
+                    decoration: const InputDecoration(
+                      hintText: 'Remarks',
+                      border: UnderlineInputBorder(),
+                    ),
+                    style: GoogleFonts.poppins(fontSize: 22),
+                  ),
                 ),
               ],
             ),

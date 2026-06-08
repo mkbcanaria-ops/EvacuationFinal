@@ -23,11 +23,95 @@ class _WebRequestsPageState extends State<WebRequestsPage> {
   final supabase = Supabase.instance.client;
   List<Map<String, dynamic>> requests = [];
   bool isLoading = true;
+  bool isSearchingRelated = false;
 
   final Color primaryGreen = const Color(0xFF0D743D);
   final Color darkGreen = const Color(0xFF095B30);
   final Color softBg = const Color(0xFFF4F7F6);
   final Color cardBorder = const Color(0xFFE3EAE6);
+
+  final List<String> firstNameKeys = const [
+    'Head_Firstname',
+    'Head_FirstName',
+    'Head_First_Name',
+    'HeadFirstName',
+    'First_Name',
+    'FirstName',
+    'Firstname',
+    'first_name',
+    'firstName',
+    'firstname',
+  ];
+
+  final List<String> middleNameKeys = const [
+    'Head_Middlename',
+    'Head_MiddleName',
+    'Head_Middle_Name',
+    'HeadMiddleName',
+    'Middle_Name',
+    'MiddleName',
+    'Middlename',
+    'middle_name',
+    'middleName',
+    'middlename',
+  ];
+
+  final List<String> lastNameKeys = const [
+    'Head_Surname',
+    'Head_Lastname',
+    'Head_LastName',
+    'Head_Last_Name',
+    'HeadSurname',
+    'HeadLastName',
+    'Last_Name',
+    'LastName',
+    'Lastname',
+    'Surname',
+    'surname',
+    'last_name',
+    'lastName',
+    'lastname',
+  ];
+
+  final List<String> fullNameKeys = const [
+    'Full_Name',
+    'FullName',
+    'Name',
+    'Resident_Name',
+    'ResidentName',
+    'Head_Name',
+    'HeadName',
+    'Household_Head',
+    'HouseholdHead',
+    'full_name',
+    'fullName',
+    'name',
+  ];
+
+  final List<String> registrationIdKeys = const [
+    'Registration_ID',
+    'RegistrationId',
+    'registration_id',
+    'registrationId',
+    'Reg_ID',
+    'reg_id',
+    'id',
+  ];
+
+  final List<String> qrCodeKeys = const [
+    'QR_Code',
+    'QRCode',
+    'Qr_Code',
+    'qr_code',
+    'qrCode',
+    'QR',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    fetchRequests();
+  }
 
   String formatRequestDate(String dateStr) {
     try {
@@ -43,10 +127,283 @@ class _WebRequestsPageState extends State<WebRequestsPage> {
     return text.isEmpty ? 'Not provided' : text;
   }
 
-  @override
-  void initState() {
-    super.initState();
-    fetchRequests();
+  String cleanText(dynamic value) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty) return '';
+    if (text.toLowerCase() == 'null') return '';
+    if (text == 'Not provided') return '';
+    return text;
+  }
+
+  String readAny(Map<String, dynamic> row, List<String> keys) {
+    for (final key in keys) {
+      if (row.containsKey(key)) {
+        final value = cleanText(row[key]);
+        if (value.isNotEmpty) return value;
+      }
+    }
+    return '';
+  }
+
+  String normalizeName(dynamic value) {
+    return cleanText(value)
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9ñ\s]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  List<String> nameTokens(String value) {
+    final normalized = normalizeName(value);
+    if (normalized.isEmpty) return [];
+    return normalized
+        .split(' ')
+        .where((word) => word.trim().isNotEmpty)
+        .toList();
+  }
+
+  String buildFullName({
+    required dynamic firstName,
+    required dynamic middleName,
+    required dynamic lastName,
+  }) {
+    final first = cleanText(firstName);
+    final middle = cleanText(middleName);
+    final last = cleanText(lastName);
+
+    return '$first ${middle.isNotEmpty ? '$middle ' : ''}$last'
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  String requestFullName(Map<String, dynamic> request) {
+    return buildFullName(
+      firstName: request['First_Name'],
+      middleName: request['Middle_Name'],
+      lastName: request['Last_Name'],
+    );
+  }
+
+  String registrationFirstName(Map<String, dynamic> row) {
+    return readAny(row, firstNameKeys);
+  }
+
+  String registrationMiddleName(Map<String, dynamic> row) {
+    return readAny(row, middleNameKeys);
+  }
+
+  String registrationLastName(Map<String, dynamic> row) {
+    return readAny(row, lastNameKeys);
+  }
+
+  String registrationId(Map<String, dynamic> row) {
+    return readAny(row, registrationIdKeys);
+  }
+
+  String registrationQrCode(Map<String, dynamic> row) {
+    return readAny(row, qrCodeKeys);
+  }
+
+  String registrationFullName(Map<String, dynamic> row) {
+    final full = readAny(row, fullNameKeys);
+    if (full.isNotEmpty) return full;
+
+    return buildFullName(
+      firstName: registrationFirstName(row),
+      middleName: registrationMiddleName(row),
+      lastName: registrationLastName(row),
+    );
+  }
+
+  String registrationNameSearchText(Map<String, dynamic> row) {
+    final directName = registrationFullName(row);
+
+    if (directName.isNotEmpty) {
+      return normalizeName(directName);
+    }
+
+    final possibleNameValues = <String>[];
+
+    for (final entry in row.entries) {
+      final key = entry.key.toLowerCase();
+      final value = cleanText(entry.value);
+
+      if (value.isEmpty) continue;
+
+      if (key.contains('name') ||
+          key.contains('firstname') ||
+          key.contains('middlename') ||
+          key.contains('surname') ||
+          key.contains('lastname') ||
+          key.contains('head')) {
+        possibleNameValues.add(value);
+      }
+    }
+
+    return normalizeName(possibleNameValues.join(' '));
+  }
+
+  bool containsAllTokens(String text, List<String> tokens) {
+    if (text.isEmpty || tokens.isEmpty) return false;
+    return tokens.every((token) => text.split(' ').contains(token));
+  }
+
+  bool containsImportantNameTokens(String text, List<String> tokens) {
+    if (text.isEmpty || tokens.isEmpty) return false;
+
+    int found = 0;
+
+    for (final token in tokens) {
+      if (text.split(' ').contains(token)) {
+        found++;
+      }
+    }
+
+    if (tokens.length == 1) return found == 1;
+    if (tokens.length == 2) return found >= 2;
+    return found >= 2;
+  }
+
+  int scoreRegistrationMatch({
+    required Map<String, dynamic> request,
+    required Map<String, dynamic> registration,
+  }) {
+    final reqFirst = normalizeName(request['First_Name']);
+    final reqMiddle = normalizeName(request['Middle_Name']);
+    final reqLast = normalizeName(request['Last_Name']);
+    final reqFull = normalizeName(requestFullName(request));
+    final reqTokens = nameTokens(requestFullName(request));
+
+    final regFirst = normalizeName(registrationFirstName(registration));
+    final regMiddle = normalizeName(registrationMiddleName(registration));
+    final regLast = normalizeName(registrationLastName(registration));
+    final regFull = normalizeName(registrationFullName(registration));
+    final regSearchText = registrationNameSearchText(registration);
+
+    if (reqTokens.isEmpty) return 0;
+    if (regSearchText.isEmpty) return 0;
+
+    final firstMatch =
+        reqFirst.isNotEmpty &&
+        (regFirst == reqFirst || regSearchText.split(' ').contains(reqFirst));
+
+    final middleMatch =
+        reqMiddle.isNotEmpty &&
+        (regMiddle == reqMiddle ||
+            regSearchText.split(' ').contains(reqMiddle));
+
+    final lastTokens = nameTokens(reqLast);
+    final lastToken = lastTokens.isNotEmpty ? lastTokens.last : '';
+
+    final lastMatch =
+        reqLast.isNotEmpty &&
+        (regLast == reqLast ||
+            regSearchText.contains(reqLast) ||
+            containsImportantNameTokens(regSearchText, lastTokens));
+
+    final lastTokenMatch =
+        lastToken.isNotEmpty && regSearchText.split(' ').contains(lastToken);
+
+    if (reqFull.isNotEmpty && regFull == reqFull) return 100;
+
+    if (containsAllTokens(regSearchText, reqTokens)) {
+      return 98;
+    }
+
+    if (firstMatch && middleMatch && lastTokenMatch) {
+      return 96;
+    }
+
+    if (firstMatch && lastMatch) {
+      return 94;
+    }
+
+    if (firstMatch && lastTokenMatch) {
+      return 92;
+    }
+
+    if (containsImportantNameTokens(regSearchText, reqTokens)) {
+      return 88;
+    }
+
+    return 0;
+  }
+
+  Map<String, dynamic> normalizeHouseholdForRelatedView(
+    Map<String, dynamic> row,
+    int score,
+  ) {
+    final item = Map<String, dynamic>.from(row);
+
+    item['Head_Firstname'] = registrationFirstName(row);
+    item['Head_Middlename'] = registrationMiddleName(row);
+    item['Head_Surname'] = registrationLastName(row);
+    item['Registration_ID'] = registrationId(row);
+    item['QR_Code'] = registrationQrCode(row);
+    item['Match_Score'] = score;
+
+    item['Full_Name'] = registrationFullName(row).isNotEmpty
+        ? registrationFullName(row)
+        : buildFullName(
+            firstName: item['Head_Firstname'],
+            middleName: item['Head_Middlename'],
+            lastName: item['Head_Surname'],
+          );
+
+    return item;
+  }
+
+  Future<List<Map<String, dynamic>>> fetchAllRegistrationRows() async {
+    const int pageSize = 1000;
+    const int maxRows = 20000;
+
+    final List<Map<String, dynamic>> allRows = [];
+
+    for (int from = 0; from < maxRows; from += pageSize) {
+      final int to = from + pageSize - 1;
+
+      final data = await supabase
+          .from('Registration_Table')
+          .select('*')
+          .range(from, to);
+
+      final batch = List<Map<String, dynamic>>.from(data);
+      allRows.addAll(batch);
+
+      if (batch.length < pageSize) break;
+    }
+
+    return allRows;
+  }
+
+  Future<List<Map<String, dynamic>>> findRelatedHouseholds(
+    Map<String, dynamic> request,
+  ) async {
+    final allRegistrations = await fetchAllRegistrationRows();
+    final List<Map<String, dynamic>> matches = [];
+
+    for (final registration in allRegistrations) {
+      final score = scoreRegistrationMatch(
+        request: request,
+        registration: registration,
+      );
+
+      if (score >= 80) {
+        matches.add(normalizeHouseholdForRelatedView(registration, score));
+      }
+    }
+
+    matches.sort((a, b) {
+      final aScore = int.tryParse(a['Match_Score']?.toString() ?? '0') ?? 0;
+      final bScore = int.tryParse(b['Match_Score']?.toString() ?? '0') ?? 0;
+      return bScore.compareTo(aScore);
+    });
+
+    debugPrint('REQUEST NAME: ${requestFullName(request)}');
+    debugPrint('REGISTRATION ROWS FETCHED: ${allRegistrations.length}');
+    debugPrint('RELATED HOUSEHOLDS FOUND: ${matches.length}');
+
+    return matches;
   }
 
   Future<void> _showErrorDialog(String title, String message) async {
@@ -255,12 +612,9 @@ class _WebRequestsPageState extends State<WebRequestsPage> {
   }
 
   Future<void> approveRequest(Map<String, dynamic> request) async {
-    if (!mounted) return;
+    if (!mounted || isSearchingRelated) return;
 
-    final headSurname = safeText(request['Last_Name']);
-    final headFirstName = safeText(request['First_Name']);
-    final headMiddleName = safeText(request['Middle_Name']);
-
+    final reqName = requestFullName(request);
     final requestId = safeText(request['Request_ID']);
     final requestEmail = safeText(request['Email_Address']);
 
@@ -269,40 +623,31 @@ class _WebRequestsPageState extends State<WebRequestsPage> {
       iconColor: primaryGreen,
       title: "Find Related Household?",
       message:
-          "The system will search for matching registered households first. The request will only be approved after the correct QR code is selected and sent to the resident email.",
+          "The system will get all records from Registration_Table, then match the request name \"$reqName\" based on the resident name details.",
       confirmText: "Continue",
       confirmColor: primaryGreen,
     );
 
     if (confirm != true) return;
 
+    setState(() => isSearchingRelated = true);
+
     List<Map<String, dynamic>> relatedHouseholds = [];
 
     try {
-      if (headMiddleName == 'Not provided') {
-        relatedHouseholds = await supabase
-            .from('Registration_Table')
-            .select(
-              'Head_Firstname, Head_Middlename, Head_Surname, Registration_ID, QR_Code',
-            )
-            .ilike('Head_Surname', '%$headSurname%')
-            .ilike('Head_Firstname', '%$headFirstName%');
-      } else {
-        relatedHouseholds = await supabase
-            .from('Registration_Table')
-            .select(
-              'Head_Firstname, Head_Middlename, Head_Surname, Registration_ID, QR_Code',
-            )
-            .ilike('Head_Surname', '%$headSurname%')
-            .ilike('Head_Firstname', '%$headFirstName%')
-            .ilike('Head_Middlename', '%$headMiddleName%');
-      }
+      relatedHouseholds = await findRelatedHouseholds(request);
     } catch (e) {
-      await _showErrorDialog(
-        "Error",
-        "Failed to fetch related households:\n$e",
-      );
+      if (mounted) {
+        await _showErrorDialog(
+          "Error",
+          "Failed to fetch details from Registration_Table:\n$e",
+        );
+      }
       return;
+    } finally {
+      if (mounted) {
+        setState(() => isSearchingRelated = false);
+      }
     }
 
     if (!mounted) return;
@@ -313,7 +658,7 @@ class _WebRequestsPageState extends State<WebRequestsPage> {
         iconColor: Colors.red.shade600,
         title: "No Related Households",
         message:
-            "No related household records were found for this name. Do you want to reject this request?",
+            "No related household records were found for \"$reqName\" in Registration_Table.\n\nPlease check if the name in Request_Table and Registration_Table are spelled the same.",
         confirmText: "Reject",
         confirmColor: Colors.red.shade600,
       );
@@ -342,20 +687,6 @@ class _WebRequestsPageState extends State<WebRequestsPage> {
 
       return;
     }
-
-    /*
-      IMPORTANT:
-      We do NOT update Status to Approved here anymore.
-
-      New process:
-      1. Admin clicks Find QR.
-      2. System searches related households.
-      3. Admin selects the correct household.
-      4. QR preview page opens.
-      5. Email is already passed from this request.
-      6. QR page sends QR to that email.
-      7. Request becomes Approved only after sending succeeds.
-    */
 
     await Navigator.push(
       context,
@@ -713,11 +1044,9 @@ class _WebRequestsPageState extends State<WebRequestsPage> {
   }
 
   Widget _buildRequestCard(Map<String, dynamic> req) {
-    final middleName = safeText(req['Middle_Name']);
-    final fullName =
-        "${safeText(req['First_Name'])} ${middleName == 'Not provided' ? '' : middleName} ${safeText(req['Last_Name'])}"
-            .replaceAll(RegExp(r'\s+'), ' ')
-            .trim();
+    final fullName = requestFullName(req).isEmpty
+        ? 'Unnamed Request'
+        : requestFullName(req);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -731,7 +1060,7 @@ class _WebRequestsPageState extends State<WebRequestsPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            fullName.isEmpty ? 'Unnamed Request' : fullName,
+            fullName,
             style: GoogleFonts.poppins(
               fontSize: 17,
               fontWeight: FontWeight.w600,
@@ -760,14 +1089,25 @@ class _WebRequestsPageState extends State<WebRequestsPage> {
                   child: SizedBox(
                     height: 42,
                     child: ElevatedButton.icon(
-                      onPressed: () => approveRequest(req),
-                      icon: const Icon(
-                        Icons.search_rounded,
-                        color: Colors.white,
-                        size: 18,
-                      ),
+                      onPressed: isSearchingRelated
+                          ? null
+                          : () => approveRequest(req),
+                      icon: isSearchingRelated
+                          ? const SizedBox(
+                              width: 17,
+                              height: 17,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.search_rounded,
+                              color: Colors.white,
+                              size: 18,
+                            ),
                       label: Text(
-                        "Find QR",
+                        isSearchingRelated ? "Searching..." : "Find QR",
                         style: GoogleFonts.poppins(
                           color: Colors.white,
                           fontWeight: FontWeight.w600,
@@ -776,6 +1116,7 @@ class _WebRequestsPageState extends State<WebRequestsPage> {
                       style: ElevatedButton.styleFrom(
                         elevation: 0,
                         backgroundColor: primaryGreen,
+                        disabledBackgroundColor: primaryGreen.withOpacity(0.55),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -788,8 +1129,9 @@ class _WebRequestsPageState extends State<WebRequestsPage> {
                   child: SizedBox(
                     height: 42,
                     child: OutlinedButton.icon(
-                      onPressed: () =>
-                          declineRequest(req['Request_ID'].toString()),
+                      onPressed: isSearchingRelated
+                          ? null
+                          : () => declineRequest(req['Request_ID'].toString()),
                       icon: const Icon(Icons.close_rounded, size: 18),
                       label: Text(
                         "Decline",

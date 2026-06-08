@@ -1033,6 +1033,18 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
 
       final Map<String, Map<String, dynamic>> groupedByBarangayAndSite = {};
 
+      // IMPORTANT FAMILY COUNT FIX:
+      // A family can be split between the selected evacuation center and Santa RHU
+      // because coded residents are deployed to RHU while the rest stay in the main EC.
+      // Persons must still be counted per row, but family counts must be counted only
+      // once per Registration_ID for the whole report/time bucket. Since Evacuation_A
+      // rows are added before Evacuation_B rows, the main EC keeps the family count
+      // and the RHU row will not add another family for the same Registration_ID.
+      final Set<String> countedFamilyIdsOverall = <String>{};
+      final Set<String> countedFourPsFamilyIdsOverall = <String>{};
+      final Set<String> countedFamilyIdsCumOverall = <String>{};
+      final Set<String> countedFamilyIdsNowOverall = <String>{};
+
       for (final row in filteredRows) {
         final registrationId = (row['Registration_ID'] ?? '').toString().trim();
         final barangay = (row['Barangay'] ?? '').toString().trim();
@@ -1109,15 +1121,22 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
         final familyIdSetNow = group['_familyIdsNow'] as Set<String>;
         final eventTime = row['_eventTime'] as DateTime?;
 
-        if (!familyIdSet.contains(registrationId)) {
+        // Count this Registration_ID as one family only once across all sites.
+        // Example: if some members are in the main EC and coded members are in
+        // Santa RHU, the family count stays 1 instead of becoming 2.
+        if (!countedFamilyIdsOverall.contains(registrationId)) {
+          countedFamilyIdsOverall.add(registrationId);
           familyIdSet.add(registrationId);
           group['families'] = (group['families'] as int) + 1;
         }
 
+        // Persons are still counted normally, even when members of the same
+        // family are split between the main EC and RHU.
         group['persons'] = (group['persons'] as int) + 1;
 
         if (_isTrue4Ps(row['4Ps_Families']) &&
-            !fourPsFamilyIdSet.contains(registrationId)) {
+            !countedFourPsFamilyIdsOverall.contains(registrationId)) {
+          countedFourPsFamilyIdsOverall.add(registrationId);
           fourPsFamilyIdSet.add(registrationId);
           group['fourPsFamilies'] = (group['fourPsFamilies'] as int) + 1;
         }
@@ -1129,7 +1148,8 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
               eventTime.isAfter(splitTime) && !eventTime.isAfter(end);
 
           if (isWithinCumRange) {
-            if (!familyIdSetCum.contains(registrationId)) {
+            if (!countedFamilyIdsCumOverall.contains(registrationId)) {
+              countedFamilyIdsCumOverall.add(registrationId);
               familyIdSetCum.add(registrationId);
               group['insideEcFamiliesCum'] =
                   (group['insideEcFamiliesCum'] as int) + 1;
@@ -1142,7 +1162,8 @@ class _WebReportsPreviewPageState extends State<WebReportsPreviewPage> {
           }
 
           if (isWithinNowRange) {
-            if (!familyIdSetNow.contains(registrationId)) {
+            if (!countedFamilyIdsNowOverall.contains(registrationId)) {
+              countedFamilyIdsNowOverall.add(registrationId);
               familyIdSetNow.add(registrationId);
               group['insideEcFamiliesNow'] =
                   (group['insideEcFamiliesNow'] as int) + 1;

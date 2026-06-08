@@ -75,6 +75,8 @@ class _ShowRegistrationPageFormWidgetState
   final TextEditingController _headSurnameController = TextEditingController();
   final TextEditingController _headFirstController = TextEditingController();
   final TextEditingController _headMiddleController = TextEditingController();
+  final TextEditingController _headCodeController = TextEditingController();
+  final TextEditingController _headRemarksController = TextEditingController();
   final TextEditingController _headAgeController = TextEditingController();
   final TextEditingController _headSexController =
       TextEditingController(); // Holds "M" or "F"
@@ -219,6 +221,8 @@ class _ShowRegistrationPageFormWidgetState
         'Head_Surname': _headSurnameController.text,
         'Head_Age': int.tryParse(_headAgeController.text) ?? 0,
         'Head_Sex': _headSexController.text,
+        'Head_Code': _headCodeController.text.trim(),
+        'Head_Remarks': _headRemarksController.text.trim(),
         'Date_of_Birth': _dobController.text,
         'Occupation': _occupationController.text,
         'Monthly_Income': double.tryParse(_monthlyIncomeController.text) ?? 0,
@@ -475,6 +479,10 @@ class _ShowRegistrationPageFormWidgetState
       _headAgeController.text =
           registrationResponse['Head_Age']?.toString() ?? '';
       _headSexController.text = registrationResponse['Head_Sex'] ?? '';
+      _headCodeController.text =
+          registrationResponse['Head_Code']?.toString() ?? '';
+      _headRemarksController.text =
+          registrationResponse['Head_Remarks']?.toString() ?? '';
       _dobController.text = registrationResponse['Date_of_Birth'] ?? '';
       _occupationController.text = registrationResponse['Occupation'] ?? '';
       _monthlyIncomeController.text =
@@ -1128,11 +1136,10 @@ class _ShowRegistrationPageFormWidgetState
       );
     }
 
-    // Main Row
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // LEFT: Name fields
+        // LEFT: Head name fields + Code
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1154,13 +1161,17 @@ class _ShowRegistrationPageFormWidgetState
                   ],
                 ),
               ),
+
               const SizedBox(height: 12),
+
+              // Name row
               Row(
                 children: [
                   SizedBox(
                     width: 160,
                     child: TextField(
                       controller: _headSurnameController,
+                      textAlign: TextAlign.center,
                       decoration: const InputDecoration(
                         hintText: 'Surname',
                         border: UnderlineInputBorder(),
@@ -1173,6 +1184,7 @@ class _ShowRegistrationPageFormWidgetState
                     width: 160,
                     child: TextField(
                       controller: _headFirstController,
+                      textAlign: TextAlign.center,
                       decoration: const InputDecoration(
                         hintText: 'First Name',
                         border: UnderlineInputBorder(),
@@ -1185,6 +1197,7 @@ class _ShowRegistrationPageFormWidgetState
                     width: 160,
                     child: TextField(
                       controller: _headMiddleController,
+                      textAlign: TextAlign.center,
                       decoration: const InputDecoration(
                         hintText: 'Middle Name',
                         border: UnderlineInputBorder(),
@@ -1194,11 +1207,30 @@ class _ShowRegistrationPageFormWidgetState
                   ),
                 ],
               ),
+
+              const SizedBox(height: 18),
+
+              // Code under the head names
+              Padding(
+                padding: const EdgeInsets.only(left: 180.0),
+                child: SizedBox(
+                  width: 180,
+                  child: TextField(
+                    controller: _headCodeController,
+                    textAlign: TextAlign.center,
+                    decoration: const InputDecoration(
+                      hintText: 'Code',
+                      border: UnderlineInputBorder(),
+                    ),
+                    style: GoogleFonts.poppins(fontSize: 22),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
 
-        // RIGHT: Age + Sex
+        // RIGHT: Age, Sex + Remarks
         Expanded(
           child: Padding(
             padding: const EdgeInsets.only(left: 220.0),
@@ -1212,7 +1244,9 @@ class _ShowRegistrationPageFormWidgetState
                   fontSize: 22,
                   labelFontSize: 22,
                 ),
+
                 const SizedBox(height: 12),
+
                 // SEX SELECTION
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
@@ -1237,6 +1271,22 @@ class _ShowRegistrationPageFormWidgetState
                       });
                     }),
                   ],
+                ),
+
+                const SizedBox(height: 18),
+
+                // Remarks under Age and Sex
+                SizedBox(
+                  width: 340,
+                  child: TextField(
+                    controller: _headRemarksController,
+                    textAlign: TextAlign.center,
+                    decoration: const InputDecoration(
+                      hintText: 'Remarks',
+                      border: UnderlineInputBorder(),
+                    ),
+                    style: GoogleFonts.poppins(fontSize: 22),
+                  ),
                 ),
               ],
             ),

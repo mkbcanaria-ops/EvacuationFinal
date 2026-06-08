@@ -79,6 +79,8 @@ class _RegistrationFormWidgetState extends State<RegistrationFormWidget> {
   final TextEditingController _headSurnameController = TextEditingController();
   final TextEditingController _headFirstController = TextEditingController();
   final TextEditingController _headMiddleController = TextEditingController();
+  final TextEditingController _headCodeController = TextEditingController();
+  final TextEditingController _headRemarksController = TextEditingController();
   final TextEditingController _headAgeController = TextEditingController();
   final TextEditingController _headSexController =
       TextEditingController(); // Holds "M" or "F"
@@ -237,6 +239,8 @@ class _RegistrationFormWidgetState extends State<RegistrationFormWidget> {
     final headSurname = _headSurnameController.text.trim();
     final headFirst = _headFirstController.text.trim();
     final headMiddle = _headMiddleController.text.trim();
+    final headCode = _headCodeController.text.trim();
+    final headRemarks = _headRemarksController.text.trim();
     final headAge = _headAgeController.text.trim();
     final headSex = _headSexController.text.trim();
 
@@ -316,6 +320,8 @@ class _RegistrationFormWidgetState extends State<RegistrationFormWidget> {
             'Head_Surname': headSurname,
             'Head_Firstname': headFirst,
             'Head_Middlename': headMiddle,
+            'Head_Code': headCode,
+            'Head_Remarks': headRemarks,
             'Head_Age': headAge,
             'Head_Sex': headSex,
             'Date_of_Birth': dob,
@@ -525,6 +531,8 @@ class _RegistrationFormWidgetState extends State<RegistrationFormWidget> {
     _controller.dispose();
     _horizontalController.dispose();
     _verticalController.dispose();
+    _headCodeController.dispose();
+    _headRemarksController.dispose();
     super.dispose();
   }
 
@@ -1201,7 +1209,7 @@ class _RegistrationFormWidgetState extends State<RegistrationFormWidget> {
       double labelFontSize = 22,
     }) {
       int age = int.tryParse(controller.text) ?? 0;
-      bool isValidAge = age >= 18;
+      bool isValidAge = controller.text.isEmpty || age >= 18;
 
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1236,7 +1244,7 @@ class _RegistrationFormWidgetState extends State<RegistrationFormWidget> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // LEFT : HEADER + NAME FIELDS
+        // LEFT : HEADER + NAME FIELDS + CODE
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1260,13 +1268,14 @@ class _RegistrationFormWidgetState extends State<RegistrationFormWidget> {
               ),
               const SizedBox(height: 12),
 
-              // **NAME ROW**
+              // NAME ROW
               Row(
                 children: [
                   SizedBox(
                     width: 160,
                     child: TextField(
                       controller: _headSurnameController,
+                      textAlign: TextAlign.center,
                       decoration: const InputDecoration(
                         hintText: 'Surname',
                         border: UnderlineInputBorder(),
@@ -1275,11 +1284,11 @@ class _RegistrationFormWidgetState extends State<RegistrationFormWidget> {
                     ),
                   ),
                   const SizedBox(width: 20),
-
                   SizedBox(
                     width: 160,
                     child: TextField(
                       controller: _headFirstController,
+                      textAlign: TextAlign.center,
                       decoration: const InputDecoration(
                         hintText: 'First Name',
                         border: UnderlineInputBorder(),
@@ -1288,11 +1297,11 @@ class _RegistrationFormWidgetState extends State<RegistrationFormWidget> {
                     ),
                   ),
                   const SizedBox(width: 20),
-
                   SizedBox(
                     width: 160,
                     child: TextField(
                       controller: _headMiddleController,
+                      textAlign: TextAlign.center,
                       decoration: const InputDecoration(
                         hintText: 'Middle Name',
                         border: UnderlineInputBorder(),
@@ -1302,11 +1311,30 @@ class _RegistrationFormWidgetState extends State<RegistrationFormWidget> {
                   ),
                 ],
               ),
+
+              const SizedBox(height: 18),
+
+              // Head Code under the names
+              Padding(
+                padding: const EdgeInsets.only(left: 180.0),
+                child: SizedBox(
+                  width: 180,
+                  child: TextField(
+                    controller: _headCodeController,
+                    textAlign: TextAlign.center,
+                    decoration: const InputDecoration(
+                      hintText: 'Code',
+                      border: UnderlineInputBorder(),
+                    ),
+                    style: GoogleFonts.poppins(fontSize: 22),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
 
-        // RIGHT : AGE + SEX
+        // RIGHT : AGE + SEX + REMARKS
         Expanded(
           child: Padding(
             padding: const EdgeInsets.only(left: 100.0),
@@ -1335,7 +1363,6 @@ class _RegistrationFormWidgetState extends State<RegistrationFormWidget> {
                     ),
                     const SizedBox(width: 12),
 
-                    // Male
                     buildCheckBox('M', _headSexController.text == 'M', (val) {
                       setState(() {
                         _headSexController.text = val! ? 'M' : '';
@@ -1343,13 +1370,28 @@ class _RegistrationFormWidgetState extends State<RegistrationFormWidget> {
                     }),
                     const SizedBox(width: 10),
 
-                    // Female
                     buildCheckBox('F', _headSexController.text == 'F', (val) {
                       setState(() {
                         _headSexController.text = val! ? 'F' : '';
                       });
                     }),
                   ],
+                ),
+
+                const SizedBox(height: 18),
+
+                // Head Remarks under Age and Sex
+                SizedBox(
+                  width: 340,
+                  child: TextField(
+                    controller: _headRemarksController,
+                    textAlign: TextAlign.center,
+                    decoration: const InputDecoration(
+                      hintText: 'Remarks',
+                      border: UnderlineInputBorder(),
+                    ),
+                    style: GoogleFonts.poppins(fontSize: 22),
+                  ),
                 ),
               ],
             ),

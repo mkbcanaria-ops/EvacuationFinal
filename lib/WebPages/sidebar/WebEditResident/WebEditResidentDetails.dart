@@ -85,6 +85,8 @@ class _ShowRegistrationPageFormWidgetState
   final TextEditingController _headSurnameController = TextEditingController();
   final TextEditingController _headFirstController = TextEditingController();
   final TextEditingController _headMiddleController = TextEditingController();
+  final TextEditingController _headCodeController = TextEditingController();
+  final TextEditingController _headRemarksController = TextEditingController();
   final TextEditingController _headAgeController = TextEditingController();
   final TextEditingController _headSexController =
       TextEditingController(); // Holds "M" or "F"
@@ -331,6 +333,8 @@ class _ShowRegistrationPageFormWidgetState
         'Head_Surname': _headSurnameController.text.trim(),
         'Head_Age': int.tryParse(_headAgeController.text.trim()) ?? 0,
         'Head_Sex': _headSexController.text.trim(),
+        'Head_Code': _headCodeController.text.trim(),
+        'Head_Remarks': _headRemarksController.text.trim(),
         'Date_of_Birth': _dobController.text.trim(),
         'Occupation': _occupationController.text.trim(),
         'Monthly_Income':
@@ -615,6 +619,10 @@ class _ShowRegistrationPageFormWidgetState
           registrationResponse['Head_Age']?.toString() ?? '';
       _headSexController.text =
           registrationResponse['Head_Sex']?.toString() ?? '';
+      _headCodeController.text =
+          registrationResponse['Head_Code']?.toString() ?? '';
+      _headRemarksController.text =
+          registrationResponse['Head_Remarks']?.toString() ?? '';
 
       _dobController.text =
           registrationResponse['Date_of_Birth']?.toString() ?? '';
@@ -738,6 +746,8 @@ class _ShowRegistrationPageFormWidgetState
     _headSurnameController.dispose();
     _headFirstController.dispose();
     _headMiddleController.dispose();
+    _headCodeController.dispose();
+    _headRemarksController.dispose();
     _headAgeController.dispose();
     _headSexController.dispose();
     _dobController.dispose();
@@ -1463,18 +1473,16 @@ class _ShowRegistrationPageFormWidgetState
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Left: Name fields
+        // Left: Head name fields + Code
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Add more padding to move header further to the right
               Padding(
                 padding: const EdgeInsets.only(left: 130.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Header
                     Text(
                       'HEAD OF THE FAMILY',
                       style: GoogleFonts.poppins(
@@ -1483,23 +1491,20 @@ class _ShowRegistrationPageFormWidgetState
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Container(
-                      width: 250, // line width under header
-                      height: 2,
-                      color: Colors.black87,
-                    ),
+                    Container(width: 250, height: 2, color: Colors.black87),
                   ],
                 ),
               ),
               const SizedBox(height: 12),
-              // Row for Surname / First / Middle
+
+              // Row for Surname / First Name / Middle Name
               Row(
                 children: [
-                  // Surname
                   SizedBox(
                     width: 160,
                     child: TextField(
                       controller: _headSurnameController,
+                      textAlign: TextAlign.center,
                       decoration: const InputDecoration(
                         hintText: 'Surname',
                         border: UnderlineInputBorder(),
@@ -1508,11 +1513,11 @@ class _ShowRegistrationPageFormWidgetState
                     ),
                   ),
                   const SizedBox(width: 20),
-                  // First Name
                   SizedBox(
                     width: 160,
                     child: TextField(
                       controller: _headFirstController,
+                      textAlign: TextAlign.center,
                       decoration: const InputDecoration(
                         hintText: 'First Name',
                         border: UnderlineInputBorder(),
@@ -1521,11 +1526,11 @@ class _ShowRegistrationPageFormWidgetState
                     ),
                   ),
                   const SizedBox(width: 20),
-                  // Middle Name
                   SizedBox(
                     width: 160,
                     child: TextField(
                       controller: _headMiddleController,
+                      textAlign: TextAlign.center,
                       decoration: const InputDecoration(
                         hintText: 'Middle Name',
                         border: UnderlineInputBorder(),
@@ -1535,28 +1540,45 @@ class _ShowRegistrationPageFormWidgetState
                   ),
                 ],
               ),
+
+              const SizedBox(height: 18),
+
+              // Code under the head name fields
+              Padding(
+                padding: const EdgeInsets.only(left: 180.0),
+                child: SizedBox(
+                  width: 180,
+                  child: TextField(
+                    controller: _headCodeController,
+                    textAlign: TextAlign.center,
+                    decoration: const InputDecoration(
+                      hintText: 'Code',
+                      border: UnderlineInputBorder(),
+                    ),
+                    style: GoogleFonts.poppins(fontSize: 22),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
 
-        // Add padding to push Age & Sex further to the right
+        // Right: Age, Sex + Remarks
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.only(
-              left: 220.0,
-            ), // adjust this value to move further right
+            padding: const EdgeInsets.only(left: 220.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Age
                 _buildInlineField(
                   'Age:',
                   _headAgeController,
                   fontSize: 22,
                   labelFontSize: 22,
                 ),
+
                 const SizedBox(height: 12),
-                // Sex label and choices in a row
+
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
@@ -1568,7 +1590,6 @@ class _ShowRegistrationPageFormWidgetState
                       ),
                     ),
                     const SizedBox(width: 12),
-                    // Male
                     _buildCheckBox('M', _headSexController.text == 'M', (val) {
                       setState(() {
                         if (val!) {
@@ -1579,7 +1600,6 @@ class _ShowRegistrationPageFormWidgetState
                       });
                     }),
                     const SizedBox(width: 10),
-                    // Female
                     _buildCheckBox('F', _headSexController.text == 'F', (val) {
                       setState(() {
                         if (val!) {
@@ -1590,6 +1610,22 @@ class _ShowRegistrationPageFormWidgetState
                       });
                     }),
                   ],
+                ),
+
+                const SizedBox(height: 18),
+
+                // Remarks under Age and Sex
+                SizedBox(
+                  width: 340,
+                  child: TextField(
+                    controller: _headRemarksController,
+                    textAlign: TextAlign.center,
+                    decoration: const InputDecoration(
+                      hintText: 'Remarks',
+                      border: UnderlineInputBorder(),
+                    ),
+                    style: GoogleFonts.poppins(fontSize: 22),
+                  ),
                 ),
               ],
             ),

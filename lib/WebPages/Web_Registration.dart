@@ -87,6 +87,8 @@ class _WebRegistrationPageWidgetWidgetState
   final TextEditingController _headSurnameController = TextEditingController();
   final TextEditingController _headFirstController = TextEditingController();
   final TextEditingController _headMiddleController = TextEditingController();
+  final TextEditingController _headCodeController = TextEditingController();
+  final TextEditingController _headRemarksController = TextEditingController();
   final TextEditingController _headAgeController = TextEditingController();
   final TextEditingController _headSexController = TextEditingController();
   final TextEditingController _dobController = TextEditingController();
@@ -299,6 +301,8 @@ class _WebRegistrationPageWidgetWidgetState
     final headSurname = _headSurnameController.text.trim();
     final headFirst = _headFirstController.text.trim();
     final headMiddle = _headMiddleController.text.trim();
+    final headCode = _headCodeController.text.trim();
+    final headRemarks = _headRemarksController.text.trim();
     final headAge = _headAgeController.text.trim();
     final headSex = _headSexController.text.trim();
 
@@ -377,6 +381,8 @@ class _WebRegistrationPageWidgetWidgetState
             'Head_Surname': headSurname,
             'Head_Firstname': headFirst,
             'Head_Middlename': headMiddle,
+            'Head_Code': headCode,
+            'Head_Remarks': headRemarks,
             'Head_Age': headAge,
             'Head_Sex': headSex,
             'Date_of_Birth': dob,
@@ -593,6 +599,8 @@ class _WebRegistrationPageWidgetWidgetState
     _headSurnameController.dispose();
     _headFirstController.dispose();
     _headMiddleController.dispose();
+    _headCodeController.dispose();
+    _headRemarksController.dispose();
     _headAgeController.dispose();
     _headSexController.dispose();
     _dobController.dispose();
@@ -1308,6 +1316,7 @@ class _WebRegistrationPageWidgetWidgetState
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Left: Head name fields + Code
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1336,6 +1345,7 @@ class _WebRegistrationPageWidgetWidgetState
                     width: 160,
                     child: TextField(
                       controller: _headSurnameController,
+                      textAlign: TextAlign.center,
                       decoration: const InputDecoration(
                         hintText: 'Surname',
                         border: UnderlineInputBorder(),
@@ -1348,6 +1358,7 @@ class _WebRegistrationPageWidgetWidgetState
                     width: 160,
                     child: TextField(
                       controller: _headFirstController,
+                      textAlign: TextAlign.center,
                       decoration: const InputDecoration(
                         hintText: 'First Name',
                         border: UnderlineInputBorder(),
@@ -1360,6 +1371,7 @@ class _WebRegistrationPageWidgetWidgetState
                     width: 160,
                     child: TextField(
                       controller: _headMiddleController,
+                      textAlign: TextAlign.center,
                       decoration: const InputDecoration(
                         hintText: 'Middle Name',
                         border: UnderlineInputBorder(),
@@ -1369,9 +1381,28 @@ class _WebRegistrationPageWidgetWidgetState
                   ),
                 ],
               ),
+              const SizedBox(height: 18),
+              // Head Code under the names
+              Padding(
+                padding: const EdgeInsets.only(left: 180.0),
+                child: SizedBox(
+                  width: 180,
+                  child: TextField(
+                    controller: _headCodeController,
+                    textAlign: TextAlign.center,
+                    decoration: const InputDecoration(
+                      hintText: 'Code',
+                      border: UnderlineInputBorder(),
+                    ),
+                    style: GoogleFonts.poppins(fontSize: 22),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
+
+        // Right: Age, Sex + Remarks
         Expanded(
           child: Padding(
             padding: const EdgeInsets.only(left: 100.0),
@@ -1408,6 +1439,20 @@ class _WebRegistrationPageWidgetWidgetState
                       });
                     }),
                   ],
+                ),
+                const SizedBox(height: 18),
+                // Head Remarks under Age and Sex
+                SizedBox(
+                  width: 340,
+                  child: TextField(
+                    controller: _headRemarksController,
+                    textAlign: TextAlign.center,
+                    decoration: const InputDecoration(
+                      hintText: 'Remarks',
+                      border: UnderlineInputBorder(),
+                    ),
+                    style: GoogleFonts.poppins(fontSize: 22),
+                  ),
                 ),
               ],
             ),
